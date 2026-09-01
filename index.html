@@ -244,7 +244,7 @@
     position:absolute; cursor:move; user-select:none; touch-action:none;
     padding:8px 8px 12px; background:#f4f0e6; box-shadow:0 4px 14px rgba(0,0,0,.55);
   }
-  .wallPhotoBlock img { display:block; width:160px; height:120px; object-fit:cover; }
+  .wallPhotoBlock img { display:block; height:auto; object-fit:cover; }
   .wallPhotoBlock.selected { outline:1.5px dashed rgba(203,161,53,.85); outline-offset:4px; }
   .wallPhotoBlock::before {
     content:''; position:absolute; top:-4px; left:50%; margin-left:-4px;
@@ -459,7 +459,7 @@
     <span class="key">Échap</span> pour libérer le curseur.</p>
     <p class="small" id="blockerSmallHint">Visez un cadre et cliquez pour l'agrandir avec le son. Le bouton ⚙ (en haut à droite) reste toujours accessible.</p>
   </div>
-  <div id="versionTag">V1.1.1</div>
+  <div id="versionTag">V1.2.0</div>
 </div>
 
 <div id="crosshair"></div>
@@ -1078,6 +1078,11 @@ function renderWallCanvas(wallKey, canvas) {
 // Cache des photos punaisées (chargement asynchrone, à faire une seule fois
 // par URL) — plafonnées à une résolution modeste, ce sont de petites photos
 // décoratives, pas besoin de la pleine résolution d'origine.
+// Largeur d'une photo punaisée, en fraction de la largeur RÉELLE du mur —
+// utilisée à la fois pour l'objet 3D et pour l'aperçu dans l'éditeur, afin
+// que les deux se correspondent enfin (avant, l'aperçu utilisait une taille
+// CSS fixe en pixels, sans lien avec la taille réelle en 3D).
+const PHOTO_WIDTH_FRACTION = 0.22;
 const photoImageCache = {};
 function ensurePhotoLoaded(url, onLoaded, onError) {
   let entry = photoImageCache[url];
@@ -1159,7 +1164,7 @@ function buildPhotoObjectsForWall(wallKey) {
     tex.minFilter = THREE.NearestFilter;
     tex.encoding = THREE.sRGBEncoding;
 
-    const photoW = 0.6 * (b.scale || 1);
+    const photoW = t.width * PHOTO_WIDTH_FRACTION * (b.scale || 1);
     const photoH = photoW * (entry.source.height / entry.source.width || 0.75);
 
     const sub = new THREE.Group();
@@ -3200,7 +3205,7 @@ function closeAdminPanel() {
     requestGalleryFullscreen();
   }
 }
-adminBtn.addEventListener('click', openAdmin);
+adminBtn.addEventListener('click', () => { if (adminOpen) closeAdminPanel(); else openAdmin(); });
 closeAdmin.addEventListener('click', closeAdminPanel);
 
 // ============================================================
@@ -3881,10 +3886,17 @@ function renderTextBlocksLayer() {
       const img = document.createElement('img');
       img.src = block.url || '';
       img.draggable = false;
+      // Largeur calculée directement en pixels à partir de la taille AFFICHÉE
+      // du mur (pas une simple %, qui ne se résout pas correctement à travers
+      // un parent positionné en absolu sans largeur propre) — correspond
+      // ainsi à PHOTO_WIDTH_FRACTION, la même fraction utilisée pour le vrai
+      // objet 3D, donc ce qu'on voit ici est fidèle au résultat réel.
+      const wallDisplayWidth = wallTextCanvas.getBoundingClientRect().width;
+      img.style.width = (PHOTO_WIDTH_FRACTION * wallDisplayWidth * (block.scale || 1)) + 'px';
       el.appendChild(img);
       el.style.left = (block.x*100) + '%';
       el.style.top = (block.y*100) + '%';
-      el.style.transform = `translate(-50%,-50%) rotate(${block.rotation||0}deg) scale(${(block.scale||1) * displayScale})`;
+      el.style.transform = `translate(-50%,-50%) rotate(${block.rotation||0}deg)`;
       el.addEventListener('pointerdown', (e) => startDragTextBlock(e, block.id));
       wallTextBlocksLayer.appendChild(el);
       return;
@@ -4515,7 +4527,7 @@ function closeGeoPanel() {
     requestGalleryFullscreen();
   }
 }
-geoBtn.addEventListener('click', openGeo);
+geoBtn.addEventListener('click', () => { if (geoOpen) closeGeoPanel(); else openGeo(); });
 closeGeoBtn.addEventListener('click', closeGeoPanel);
 
 // Ferme le panneau et reprend tout de suite la simulation (souris reverrouillée
