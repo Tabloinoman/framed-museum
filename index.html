@@ -482,7 +482,7 @@
     <span class="key">Échap</span> pour libérer le curseur.</p>
     <p class="small" id="blockerSmallHint">Visez un cadre et cliquez pour l'agrandir avec le son. Le bouton ⚙ (en haut à droite) reste toujours accessible.</p>
   </div>
-  <div id="versionTag">V1.4.0</div>
+  <div id="versionTag">V1.4.1</div>
 </div>
 
 <div id="crosshair"></div>
@@ -1937,17 +1937,27 @@ function drawGalleryMapPaperStyle(canvas) {
   ctx.fillStyle = 'rgba(255,255,255,.05)';
   cells.forEach(({gx, gz}) => ctx.fillRect(offX + gx*scale, offY + gz*scale, scale, scale));
 
-  // Murs : traits fins noirs, façon plan d'architecte — rien du tout pour
-  // une ouverture/un carrefour, et une petite coupure perpendiculaire pour
-  // une porte (comme le symbole classique de porte entrouverte).
+  // Détecte une porte sur ce bord — pas seulement via manualEdges (posées à
+  // la main dans l'éditeur), mais aussi les portes "codées en dur" comme
+  // celle de la salle 2 juste derrière le spawn, ou celle de la salle 3 :
+  // toutes passent de toute façon par corridorDoorPositions à la construction.
+  function edgeHasDoor(cell, gx, gz, sideK) {
+    if (manualEdges[edgeKey(gx, gz, sideK)] === 'door') return true;
+    const dir = CARDINAL[sideK];
+    const wallX = cell.x + dir.x*CELL/2, wallZ = cell.z + dir.z*CELL/2;
+    return Object.values(corridorDoorPositions).some(dp => Math.hypot(dp.x-wallX, dp.z-wallZ) < 1);
+  }
+
+  // Murs : traits noirs, façon plan d'architecte — rien du tout pour une
+  // ouverture/un carrefour.
   ctx.strokeStyle = 'rgba(35,30,22,.75)';
-  ctx.lineWidth = Math.max(2, scale*0.05);
+  ctx.lineWidth = Math.max(3, scale*0.075);
   ctx.lineCap = 'butt';
-  cells.forEach(({gx, gz}) => {
+  cells.forEach(({gx, gz, x, z}) => {
     dirs.forEach(d => {
       const neighborVisited = visitedGrid.has((gx+d.x) + ',' + (gz+d.z));
       const override = manualEdges[edgeKey(gx, gz, d.k)];
-      const isDoor = !neighborVisited && override === 'door';
+      const isDoor = edgeHasDoor({x,z}, gx, gz, d.k);
       const isWall = neighborVisited ? override === 'wall' : !isDoor;
       if (!isWall) return;
       let x1, y1, x2, y2;
@@ -1961,20 +1971,19 @@ function drawGalleryMapPaperStyle(canvas) {
       ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
     });
   });
-  ctx.strokeStyle = 'rgba(35,30,22,.5)';
-  cells.forEach(({gx, gz}) => {
+  // Portes : barre bleue bien visible, en travers de l'ouverture — façon
+  // symbole de porte sur un vrai plan d'architecte.
+  ctx.fillStyle = 'rgba(60,90,120,.8)';
+  const doorBarThickness = Math.max(3, scale*0.09);
+  cells.forEach(({gx, gz, x, z}) => {
     dirs.forEach(d => {
-      const neighborVisited = visitedGrid.has((gx+d.x) + ',' + (gz+d.z));
-      const override = manualEdges[edgeKey(gx, gz, d.k)];
-      if (neighborVisited || override !== 'door') return;
+      if (!edgeHasDoor({x,z}, gx, gz, d.k)) return;
       let mx, my;
       if (d.x === 0) { mx = offX + (gx+0.5)*scale; my = offY + (d.z < 0 ? gz : gz+1) * scale; }
       else { mx = offX + (d.x < 0 ? gx : gx+1) * scale; my = offY + (gz+0.5)*scale; }
-      const r = scale*0.18;
-      ctx.beginPath();
-      if (d.x === 0) { ctx.moveTo(mx-r, my); ctx.lineTo(mx+r, my); }
-      else { ctx.moveTo(mx, my-r); ctx.lineTo(mx, my+r); }
-      ctx.stroke();
+      const len = scale*0.4;
+      if (d.x === 0) ctx.fillRect(mx-len/2, my-doorBarThickness/2, len, doorBarThickness);
+      else ctx.fillRect(mx-doorBarThickness/2, my-len/2, doorBarThickness, len);
     });
   });
 
