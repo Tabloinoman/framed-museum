@@ -243,6 +243,7 @@
   .wallPhotoBlock {
     position:absolute; cursor:move; user-select:none; touch-action:none;
     padding:8px 8px 12px; background:#f4f0e6; box-shadow:0 4px 14px rgba(0,0,0,.55);
+    transform-origin: 50% -4px; /* pivote autour de la punaise, pas du centre */
   }
   .wallPhotoBlock img { display:block; height:auto; object-fit:cover; }
   .wallPhotoBlock.selected { outline:1.5px dashed rgba(203,161,53,.85); outline-offset:4px; }
@@ -459,7 +460,7 @@
     <span class="key">Échap</span> pour libérer le curseur.</p>
     <p class="small" id="blockerSmallHint">Visez un cadre et cliquez pour l'agrandir avec le son. Le bouton ⚙ (en haut à droite) reste toujours accessible.</p>
   </div>
-  <div id="versionTag">V1.2.0</div>
+  <div id="versionTag">V1.2.1</div>
 </div>
 
 <div id="crosshair"></div>
@@ -1166,34 +1167,39 @@ function buildPhotoObjectsForWall(wallKey) {
 
     const photoW = t.width * PHOTO_WIDTH_FRACTION * (b.scale || 1);
     const photoH = photoW * (entry.source.height / entry.source.width || 0.75);
+    const pinOffsetY = photoH/2 + 0.05; // distance entre la punaise (origine du groupe) et le centre de la photo
 
     const sub = new THREE.Group();
     const backing = new THREE.Mesh(
       new THREE.PlaneGeometry(photoW + 0.08, photoH + 0.16),
       new THREE.MeshStandardMaterial({ color: 0xf4f0e6, roughness: 0.8, side: THREE.DoubleSide })
     );
-    backing.position.z = -0.002;
+    backing.position.set(0, -pinOffsetY, -0.002);
     sub.add(backing);
 
     const photo = new THREE.Mesh(
       new THREE.PlaneGeometry(photoW, photoH),
       new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7, side: THREE.DoubleSide })
     );
-    photo.position.y = 0.03;
+    photo.position.set(0, -pinOffsetY + 0.03, 0);
     sub.add(photo);
 
+    // La punaise reste à l'origine du groupe : c'est donc elle qui sert de
+    // pivot pour la rotation (et, la photo étant dimensionnée directement
+    // par son échelle plutôt que via une transformation, l'échelle "grandit"
+    // aussi depuis la punaise, vers le bas).
     const pin = new THREE.Mesh(
       new THREE.SphereGeometry(0.025, 8, 6),
       new THREE.MeshStandardMaterial({ color: 0x8a8070, roughness: 0.4, metalness: 0.3 })
     );
-    pin.position.set(0, photoH/2 + 0.05, 0.01);
+    pin.position.set(0, 0, 0.01);
     sub.add(pin);
 
-    // Position sur la surface du mur, à partir des coordonnées normalisées
-    // (x,y) du bloc (0,0 = coin haut-gauche, 1,1 = bas-droite). Décalée vers
-    // l'INTÉRIEUR (signe opposé à t.normal, qui pointe vers l'extérieur) —
-    // sinon la photo se retrouve derrière/dans le mur, invisible depuis le
-    // couloir : exactement le bug qui empêchait toute photo d'apparaître.
+    // Position de la PUNAISE sur la surface du mur (plus le centre de la
+    // photo comme avant), à partir des coordonnées normalisées (x,y) du bloc.
+    // Décalée vers l'INTÉRIEUR (signe opposé à t.normal, qui pointe vers
+    // l'extérieur) — sinon la photo se retrouve derrière/dans le mur,
+    // invisible depuis le couloir.
     const localX = (b.x - 0.5) * t.width;
     const localY = (0.5 - b.y) * t.height;
     sub.position.set(
@@ -1202,7 +1208,11 @@ function buildPhotoObjectsForWall(wallKey) {
       t.center.z + t.along.z*localX - t.normal.z*0.05
     );
     sub.rotation.y = rotY;
-    sub.rotation.z = (b.rotation || 0) * Math.PI / 180; // légère inclinaison "punaisée à la main"
+    // Signe inversé : dans le repère de Three.js, vu de face, une rotation Z
+    // positive tourne dans le sens ANTI-horaire — l'inverse de la convention
+    // CSS (rotate() positif = sens horaire) utilisée dans l'aperçu de
+    // l'éditeur. Sans ce signe, l'inclinaison partait dans le mauvais sens.
+    sub.rotation.z = -(b.rotation || 0) * Math.PI / 180;
     group.add(sub);
   });
 
@@ -3896,7 +3906,10 @@ function renderTextBlocksLayer() {
       el.appendChild(img);
       el.style.left = (block.x*100) + '%';
       el.style.top = (block.y*100) + '%';
-      el.style.transform = `translate(-50%,-50%) rotate(${block.rotation||0}deg)`;
+      // Ancré par la PUNAISE (pas le centre de la boîte) : elle est à 4px
+      // au-dessus du bord haut de l'élément (voir ::before), donc décaler
+      // toute la boîte de +4px vers le bas aligne la punaise pile sur (x,y).
+      el.style.transform = `translate(-50%, 4px) rotate(${block.rotation||0}deg)`;
       el.addEventListener('pointerdown', (e) => startDragTextBlock(e, block.id));
       wallTextBlocksLayer.appendChild(el);
       return;
