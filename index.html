@@ -151,9 +151,18 @@
   #interactBtn.hover { background:rgba(203,161,53,.35); border-color:#cba135; }
   #interactBtn:active { background:rgba(203,161,53,.3); }
 
+  #jumpBtn {
+    position:fixed; right:calc(34px + env(safe-area-inset-right)); bottom:calc(128px + env(safe-area-inset-bottom)); z-index:11;
+    width:58px; height:58px; border-radius:50%; display:none;
+    background:rgba(20,17,14,.55); border:2px solid rgba(203,161,53,.5);
+    color:#e8ddc8; font-size:.7rem; letter-spacing:.03em; cursor:pointer;
+  }
+  #jumpBtn:active { background:rgba(203,161,53,.35); border-color:#cba135; }
+
   body.mobileMode #joystickZone,
   body.mobileMode #lookZone,
-  body.mobileMode #interactBtn { display:block; }
+  body.mobileMode #interactBtn,
+  body.mobileMode #jumpBtn { display:block; }
   body.mobileMode #hint { display:none; } /* astuce clavier/souris hors-sujet sur tactile */
 
   #videoModal {
@@ -442,6 +451,7 @@
   </div>
 </div>
 <button id="interactBtn">Ouvrir</button>
+<button id="jumpBtn">Sauter</button>
 
 <div id="videoModal">
   <div class="modalInner">
@@ -2302,6 +2312,12 @@ interactBtn.addEventListener('click', () => {
   if (hit.type === 'frame') openVideoModal(hit.id);
   else if (hit.type === 'door') goThroughDoor(hit.target);
   else if (hit.type === 'wall') openWallTextEditor(hit.key);
+});
+
+const jumpBtn = document.getElementById('jumpBtn');
+jumpBtn.addEventListener('click', () => {
+  if (!isGameActive() || adminOpen || modalOpen || geoOpen) return;
+  if (isGrounded) { verticalVelocity = JUMP_SPEED; isGrounded = false; }
 });
 
 const blocker = document.getElementById('blocker');
@@ -4535,9 +4551,17 @@ function serializeGeometryState() {
 function saveGeometryToSheet() {
   if (restoringGeometry) return; // pas la peine de renvoyer ce qu'on vient de recevoir
   if (!SHEET_FORM_ACTION || !SHEET_FORM_ENTRIES.frame_id) return;
+  const json = JSON.stringify(serializeGeometryState());
+  // Un champ Google Form de type "réponse courte" tronque silencieusement les
+  // envois trop longs (aucune erreur visible, la ligne arrive juste
+  // incomplète/invalide) — au-delà d'une certaine taille, on avertit plutôt
+  // que de laisser un échec silencieux se reproduire indéfiniment.
+  if (json.length > 4000 && geoStatusEl) {
+    geoStatusEl.textContent = `Attention : la géométrie sauvegardée est devenue volumineuse (${json.length} caractères). Si des réglages cessent de se sauvegarder, vérifiez que la question "click_link" de votre Google Form est bien en mode "Paragraphe" (et non "Réponse courte", qui tronque silencieusement).`;
+  }
   const body = new URLSearchParams();
   body.append(SHEET_FORM_ENTRIES.frame_id, '__geometry__');
-  body.append(SHEET_FORM_ENTRIES.click_link, JSON.stringify(serializeGeometryState()));
+  body.append(SHEET_FORM_ENTRIES.click_link, json);
   body.append(SHEET_FORM_ENTRIES.preview_link, '');
   fetch(SHEET_FORM_ACTION, { method: 'POST', mode: 'no-cors', body })
     .catch(e => console.warn('Échec de la sauvegarde de la géométrie :', e));
