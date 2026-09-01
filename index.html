@@ -424,7 +424,7 @@
     <h1>LA GALERIE</h1>
     <p id="blockerInstructions">Cliquez pour entrer.<br>
     <span class="key">Z/W</span> <span class="key">Q/A</span> <span class="key">S</span> <span class="key">D</span>
-    ou flèches pour marcher — souris pour regarder.<br>
+    ou flèches pour marcher — souris pour regarder — <span class="key">Espace</span> pour sauter.<br>
     <span class="key">Échap</span> pour libérer le curseur.</p>
     <p class="small" id="blockerSmallHint">Visez un cadre et cliquez pour l'agrandir avec le son. Le bouton ⚙ (en haut à droite) reste toujours accessible.</p>
   </div>
@@ -733,6 +733,10 @@ function isGameActive() {
   return (document.pointerLockElement === renderer.domElement) || (isTouchDevice && mobileActive);
 }
 const MOVE_SPEED = 4.2;
+const JUMP_SPEED = 4.8;   // vitesse verticale initiale du saut
+const GRAVITY = 13;       // accélération vers le bas
+let verticalVelocity = 0;
+let isGrounded = true;
 const MARGIN = 0.4;
 const HEARING_RADIUS = 7; // distance à partir de laquelle le son d'un cadre commence à apparaître
 // Distance à partir de laquelle la vidéo d'un cadre est mise en lecture —
@@ -1776,6 +1780,7 @@ function rebuildCorridor(force) {
     yawObject.position.set(0, EYE_HEIGHT, CORRIDOR_START_Z - 3);
     yaw = 0; pitch = 0;
     yawObject.rotation.y = 0; pitchObject.rotation.x = 0;
+    verticalVelocity = 0; isGrounded = true;
   }
 }
 
@@ -2424,6 +2429,7 @@ function goThroughDoor(target) {
   pitch = 0;
   yawObject.rotation.y = yaw;
   pitchObject.rotation.x = pitch;
+  verticalVelocity = 0; isGrounded = true; // pas de saut résiduel après une téléportation
 }
 
 // Démarre/débloque le son (vidéos + ambiance) : DOIT être appelé de façon
@@ -2696,6 +2702,10 @@ function isTypingInField(e) {
 }
 window.addEventListener('keydown', (e) => {
   if (isTypingInField(e)) return; // ne pas confondre la frappe de texte (admin) avec les déplacements
+  if (e.code === 'Space') {
+    e.preventDefault(); // empêche le défilement de page par défaut du navigateur
+    if (isGrounded && isGameActive()) { verticalVelocity = JUMP_SPEED; isGrounded = false; }
+  }
   keys[e.code] = true;
 });
 window.addEventListener('keyup', (e) => {
@@ -2787,7 +2797,17 @@ function animate() {
       // Collision axe par axe (glisse le long des murs) contre les boîtes praticables du tracé.
       yawObject.position.x = isWalkable(newX, prevZ) ? newX : prevX;
       yawObject.position.z = isWalkable(yawObject.position.x, newZ) ? newZ : prevZ;
+    }
+
+    // Saut / gravité : indépendant du déplacement horizontal, pour pouvoir
+    // sauter sur place. Retombe toujours exactement à hauteur des yeux (pas
+    // de vrai relief à gérer dans cette galerie).
+    verticalVelocity -= GRAVITY * delta;
+    yawObject.position.y += verticalVelocity * delta;
+    if (yawObject.position.y <= EYE_HEIGHT) {
       yawObject.position.y = EYE_HEIGHT;
+      verticalVelocity = 0;
+      isGrounded = true;
     }
 
     // Effet VHS toujours au maximum tant qu'on est dans la simulation (plus
