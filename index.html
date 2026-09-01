@@ -459,7 +459,7 @@
     <span class="key">Échap</span> pour libérer le curseur.</p>
     <p class="small" id="blockerSmallHint">Visez un cadre et cliquez pour l'agrandir avec le son. Le bouton ⚙ (en haut à droite) reste toujours accessible.</p>
   </div>
-  <div id="versionTag">V1.1.0</div>
+  <div id="versionTag">V1.1.1</div>
 </div>
 
 <div id="crosshair"></div>
@@ -1185,13 +1185,16 @@ function buildPhotoObjectsForWall(wallKey) {
     sub.add(pin);
 
     // Position sur la surface du mur, à partir des coordonnées normalisées
-    // (x,y) du bloc (0,0 = coin haut-gauche, 1,1 = bas-droite).
+    // (x,y) du bloc (0,0 = coin haut-gauche, 1,1 = bas-droite). Décalée vers
+    // l'INTÉRIEUR (signe opposé à t.normal, qui pointe vers l'extérieur) —
+    // sinon la photo se retrouve derrière/dans le mur, invisible depuis le
+    // couloir : exactement le bug qui empêchait toute photo d'apparaître.
     const localX = (b.x - 0.5) * t.width;
     const localY = (0.5 - b.y) * t.height;
     sub.position.set(
-      t.center.x + t.along.x*localX + t.normal.x*0.05,
+      t.center.x + t.along.x*localX - t.normal.x*0.05,
       h/2 + localY,
-      t.center.z + t.along.z*localX + t.normal.z*0.05
+      t.center.z + t.along.z*localX - t.normal.z*0.05
     );
     sub.rotation.y = rotY;
     sub.rotation.z = (b.rotation || 0) * Math.PI / 180; // légère inclinaison "punaisée à la main"
