@@ -509,7 +509,7 @@
     <span class="key">Échap</span> pour libérer le curseur.</p>
     <p class="small" id="blockerSmallHint">Visez un cadre et cliquez pour l'agrandir avec le son. Le bouton ⚙ (en haut à droite) reste toujours accessible.</p>
   </div>
-  <div id="versionTag">V1.7.0</div>
+  <div id="versionTag">V1.8.0</div>
 </div>
 
 <div id="crosshair"></div>
@@ -1852,11 +1852,22 @@ function createPottedPlant(rng) {
 
 const SOCLE_HEIGHT = EYE_HEIGHT / 2; // à mi-hauteur entre le sol et la caméra
 
+// Toutes les plantes cliquables (couloir + salles), pour l'effet aléatoire
+// amusant au clic — accumulé au fil des reconstructions ; filtré au moment
+// du clic par ".parent" pour ignorer automatiquement celles qui ont depuis
+// été retirées de la scène (pas besoin de vider la liste à la main, ce qui
+// aurait un ordre d'initialisation délicat à respecter entre les salles et
+// le couloir).
+let clickablePlants = [];
+
 // Construit une plante (avec son petit socle-colonne) à une position monde
 // donnée, dans le groupe fourni — partagé entre couloir et salles. Son
 // apparence (espèce, couleurs, taille) est tirée au hasard à chaque
 // reconstruction, comme n'importe quelle nouvelle plante.
 function buildPlantAt(px, pz, group) {
+  const wrapper = new THREE.Group();
+  wrapper.userData.isPlant = true;
+
   const socle = new THREE.Mesh(
     new THREE.CylinderGeometry(0.2, 0.24, SOCLE_HEIGHT, 8),
     new THREE.MeshStandardMaterial({ color: 0x2c2620, roughness: 0.9, flatShading: true })
@@ -1864,11 +1875,16 @@ function buildPlantAt(px, pz, group) {
   socle.position.set(px, SOCLE_HEIGHT/2, pz);
   socle.castShadow = true;
   socle.receiveShadow = true;
-  group.add(socle);
+  wrapper.add(socle);
 
   const plant = createPottedPlant();
   plant.position.set(px, SOCLE_HEIGHT, pz);
-  group.add(plant);
+  wrapper.add(plant);
+  wrapper.userData.foliage = plant; // référence directe pour les effets (pas besoin de la retrouver)
+  wrapper.userData.basePos = { x: px, z: pz };
+
+  group.add(wrapper);
+  clickablePlants.push(wrapper);
 }
 
 function buildFloorCeilingTile(cx, cz, group) {
@@ -2864,6 +2880,7 @@ interactBtn.addEventListener('click', () => {
   if (hit.type === 'frame') openVideoModal(hit.id);
   else if (hit.type === 'door') goThroughDoor(hit.target);
   else if (hit.type === 'gallerymap') openGalleryMapZoom();
+  else if (hit.type === 'plant') triggerRandomPlantEffect(hit.object);
   else if (hit.type === 'wall') openWallTextEditor(hit.key);
 });
 
@@ -2958,15 +2975,88 @@ function initAmbientAudio() {
 const raycaster = new THREE.Raycaster();
 const CLICK_RANGE = 4.5; // distance max pour pouvoir "ouvrir" un cadre / une porte
 
+// Effet amusant, purement décoratif et sans conséquence, tiré au hasard
+// parmi 5 à chaque clic sur une plante — ne se sauvegarde nulle part
+// exprès (redevient normal à la prochaine reconstruction/rechargement).
+function triggerRandomPlantEffect(wrapper) {
+  const plant = wrapper.userData.foliage;
+  if (!plant) return;
+  const effects = ['wilt', 'flower', 'reshape', 'sepia', 'realistic'];
+  const effect = effects[Math.floor(Math.random() * effects.length)];
+
+  if (effect === 'wilt') {
+    // Les feuilles (tous les enfants sauf le pot et la terre, les deux
+    // premiers) partagent toutes le même matériau — les teinter une fois suffit.
+    plant.children.forEach((child, i) => {
+      if (i < 2 || !child.material) return;
+      child.material.color.set(0x7a6a3a);
+    });
+    plant.rotation.z += (Math.random() - 0.5) * 0.5;
+    plant.scale.y *= 0.65;
+
+  } else if (effect === 'flower') {
+    const flowerColors = [0xd94f70, 0xe8c34a, 0xd9695a, 0xb85fc9];
+    const color = flowerColors[Math.floor(Math.random()*flowerColors.length)];
+    const flowerMat = new THREE.MeshStandardMaterial({ color, roughness: 0.6 });
+    for (let i = 0; i < 3; i++) {
+      const flower = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 5), flowerMat);
+      flower.position.set((Math.random()-0.5)*0.25, 0.28 + Math.random()*0.15, (Math.random()-0.5)*0.25);
+      plant.add(flower);
+    }
+
+  } else if (effect === 'reshape') {
+    // Reconstruit uniquement le feuillage (pas le pot ni la terre), avec une
+    // apparence entièrement nouvelle tirée au hasard.
+    wrapper.remove(plant);
+    plant.traverse(obj => { if (obj.isMesh) { obj.geometry.dispose(); obj.material.dispose(); } });
+    const newPlant = createPottedPlant();
+    newPlant.position.copy(plant.position);
+    wrapper.add(newPlant);
+    wrapper.userData.foliage = newPlant;
+
+  } else if (effect === 'sepia') {
+    plant.traverse(obj => { if (obj.isMesh && obj.material && obj.material.color) obj.material.color.set(0x8a7355); });
+    const socle = wrapper.children[0];
+    if (socle && socle.material) socle.material.color.set(0x6b5a42);
+
+  } else if (effect === 'realistic') {
+    // Ombrage lissé plutôt que "flat shading" façon low-poly, et un pot un
+    // peu plus rond — un style un peu plus soigné que le reste du décor,
+    // volontairement en rupture avec l'esthétique pixel-art du lieu.
+    plant.traverse(obj => {
+      if (obj.isMesh && obj.material) { obj.material.flatShading = false; obj.material.roughness = 0.55; obj.material.needsUpdate = true; }
+    });
+    const pot = plant.children[0];
+    if (pot && pot.geometry) {
+      pot.geometry.dispose();
+      pot.geometry = new THREE.CylinderGeometry(0.16, 0.12, 0.26, 16);
+    }
+  }
+}
+
+function findPlantAncestor(obj) {
+  let cur = obj;
+  while (cur) {
+    if (cur.userData.isPlant) return cur;
+    cur = cur.parent;
+  }
+  return null;
+}
+
 function raycastInteractable() {
   raycaster.setFromCamera({ x: 0, y: 0 }, camera);
   // Recalculé à chaque appel (et non figé une fois pour toutes) pour que les
   // cadres créés dynamiquement sur les tronçons ajoutés restent cliquables.
   const mapTargets = galleryMapGroup ? galleryMapGroup.children.filter(o => o.userData.isGalleryMap) : [];
-  const targets = [...Object.values(frames).map(f => f.screen), ...doorMeshes, ...wallMeshesForClick, ...mapTargets];
-  const hits = raycaster.intersectObjects(targets);
+  // Filtré par ".parent" : ignore les plantes retirées de la scène depuis
+  // (salle supprimée, couloir reconstruit) sans avoir à gérer une purge manuelle.
+  const plantTargets = clickablePlants.filter(p => p.parent);
+  const targets = [...Object.values(frames).map(f => f.screen), ...doorMeshes, ...wallMeshesForClick, ...mapTargets, ...plantTargets];
+  const hits = raycaster.intersectObjects(targets, true); // récursif : les plantes sont des groupes, pas un seul maillage
   if (hits.length && hits[0].distance < CLICK_RANGE) {
     const obj = hits[0].object;
+    const plantAncestor = findPlantAncestor(obj);
+    if (plantAncestor) return { type: 'plant', object: plantAncestor };
     if (obj.userData.isDoor) return { type: 'door', target: obj.userData.doorTarget };
     if (obj.userData.frameId) return { type: 'frame', id: obj.userData.frameId };
     if (obj.userData.isGalleryMap) return { type: 'gallerymap' };
@@ -3096,6 +3186,7 @@ renderer.domElement.addEventListener('click', () => {
   if (hit.type === 'frame') openVideoModal(hit.id);
   else if (hit.type === 'door') goThroughDoor(hit.target);
   else if (hit.type === 'gallerymap') openGalleryMapZoom();
+  else if (hit.type === 'plant') triggerRandomPlantEffect(hit.object);
   else if (hit.type === 'wall') openWallTextEditor(hit.key);
 });
 
