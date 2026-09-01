@@ -1044,34 +1044,12 @@ function renderWallCanvas(wallKey, canvas) {
   const ctx = canvas.getContext('2d');
   drawWallBackgroundPattern(ctx, wallKey, width, height);
 
-  const blocks = wallTexts[wallKey] || [];
+  // Seuls les blocs de TEXTE sont "cuits" ici, dans la texture partagée du
+  // mur. Les photos sont désormais des objets 3D indépendants (voir
+  // buildPhotoObjectsForWall), positionnés par-dessus — même principe que
+  // les cadres, qui ont toujours leur propre texture séparée.
+  const blocks = (wallTexts[wallKey] || []).filter(b => b.type !== 'photo');
   blocks.forEach(b => {
-    if (b.type === 'photo') {
-      if (!b.url) return;
-      const entry = ensurePhotoLoaded(b.url, () => refreshWallTextureFor(wallKey));
-      if (!entry.loaded) return; // sera redessiné dès que le chargement aboutit
-      const img = entry.source;
-      ctx.save();
-      ctx.translate(b.x * canvas.width, b.y * canvas.height);
-      ctx.rotate((b.rotation || 0) * Math.PI / 180);
-      ctx.scale(b.scale || 1, b.scale || 1);
-      const w = canvas.width * 0.16, h = w * 0.75; // ~4:3, environ 16% de la largeur du mur
-      // Petit cadre clair façon polaroid, avec une marge en bas.
-      ctx.shadowColor = 'rgba(0,0,0,.55)';
-      ctx.shadowBlur = 10;
-      ctx.fillStyle = '#f4f0e6';
-      ctx.fillRect(-w/2 - 6, -h/2 - 6, w + 12, h + 22);
-      ctx.shadowBlur = 0;
-      ctx.drawImage(img, -w/2, -h/2, w, h);
-      // Punaise, discrète.
-      const pinY = -h/2 - 8;
-      const grad = ctx.createRadialGradient(-1, pinY-1, 0.5, 0, pinY, 3.5);
-      grad.addColorStop(0, '#b8b0a0'); grad.addColorStop(1, '#6b6255');
-      ctx.fillStyle = grad;
-      ctx.beginPath(); ctx.arc(0, pinY, 3, 0, Math.PI*2); ctx.fill();
-      ctx.restore();
-      return;
-    }
     ctx.save();
     ctx.translate(b.x * canvas.width, b.y * canvas.height);
     ctx.rotate((b.rotation || 0) * Math.PI / 180);
@@ -1124,10 +1102,92 @@ function ensurePhotoLoaded(url, onLoaded, onError) {
   return entry;
 }
 
-// Redessine la texture 3D réelle d'un mur (utile quand une photo finit de
-// charger APRÈS le premier passage de rendu, par exemple).
-function refreshWallTextureFor(wallKey) {
-  applyWallTextToScene(wallKey);
+// Groupes d'objets 3D "photo punaisée" par mur (wallKey -> THREE.Group) —
+// un mur peut avoir plusieurs photos, toutes dans le même groupe pour
+// pouvoir les retirer/reconstruire ensemble facilement.
+const photoObjectGroups = {};
+
+// (Re)construit tous les objets "photo + punaise" d'un mur donné, à partir
+// de wallTexts[wallKey] — chaque photo a sa PROPRE texture indépendante
+// (comme un cadre), plutôt que d'être composée dans la texture partagée du
+// mur : plus simple, plus fiable, et ça évite justement les soucis de
+// synchronisation qu'on a eus avec l'ancienne approche.
+function buildPhotoObjectsForWall(wallKey) {
+  const old = photoObjectGroups[wallKey];
+  if (old) {
+    old.traverse(obj => {
+      if (obj.isMesh) {
+        obj.geometry.dispose();
+        if (obj.material.map) obj.material.map.dispose();
+        obj.material.dispose();
+      }
+    });
+    scene.remove(old);
+    delete photoObjectGroups[wallKey];
+  }
+
+  const photoBlocks = (wallTexts[wallKey] || []).filter(b => b.type === 'photo' && b.url);
+  if (!photoBlocks.length) return;
+  const t = wallWorldTransform(wallKey);
+  if (!t) return;
+
+  const group = new THREE.Group();
+  const rotY = wallRotationForInwardNormal(-t.normal.x, -t.normal.z); // face vers l'intérieur, comme un mur/cadre
+
+  photoBlocks.forEach(b => {
+    const entry = ensurePhotoLoaded(b.url,
+      () => buildPhotoObjectsForWall(wallKey), // reconstruit ce mur une fois cette photo chargée
+      () => { if (currentWallTextKey === wallKey) geoStatusEl.textContent = 'Échec du chargement d\'une photo (lien invalide, ou CORS non autorisé par l\'hébergeur).'; }
+    );
+    if (!entry.loaded) return; // affiché dès que le chargement aboutit (voir callback ci-dessus)
+
+    const tex = new THREE.Texture(entry.source);
+    tex.needsUpdate = true;
+    tex.magFilter = THREE.NearestFilter;
+    tex.minFilter = THREE.NearestFilter;
+    tex.encoding = THREE.sRGBEncoding;
+
+    const photoW = 0.6 * (b.scale || 1);
+    const photoH = photoW * (entry.source.height / entry.source.width || 0.75);
+
+    const sub = new THREE.Group();
+    const backing = new THREE.Mesh(
+      new THREE.PlaneGeometry(photoW + 0.08, photoH + 0.16),
+      new THREE.MeshStandardMaterial({ color: 0xf4f0e6, roughness: 0.8, side: THREE.DoubleSide })
+    );
+    backing.position.z = -0.002;
+    sub.add(backing);
+
+    const photo = new THREE.Mesh(
+      new THREE.PlaneGeometry(photoW, photoH),
+      new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7, side: THREE.DoubleSide })
+    );
+    photo.position.y = 0.03;
+    sub.add(photo);
+
+    const pin = new THREE.Mesh(
+      new THREE.SphereGeometry(0.025, 8, 6),
+      new THREE.MeshStandardMaterial({ color: 0x8a8070, roughness: 0.4, metalness: 0.3 })
+    );
+    pin.position.set(0, photoH/2 + 0.05, 0.01);
+    sub.add(pin);
+
+    // Position sur la surface du mur, à partir des coordonnées normalisées
+    // (x,y) du bloc (0,0 = coin haut-gauche, 1,1 = bas-droite).
+    const localX = (b.x - 0.5) * t.width;
+    const localY = (0.5 - b.y) * t.height;
+    sub.position.set(
+      t.center.x + t.along.x*localX + t.normal.x*0.05,
+      h/2 + localY,
+      t.center.z + t.along.z*localX + t.normal.z*0.05
+    );
+    sub.rotation.y = rotY;
+    sub.rotation.z = (b.rotation || 0) * Math.PI / 180; // légère inclinaison "punaisée à la main"
+    group.add(sub);
+  });
+
+  scene.add(group);
+  photoObjectGroups[wallKey] = group;
 }
 
 // Génère la texture 3D (avec le texte) pour un mur donné.
@@ -1395,6 +1455,19 @@ function disposeRoom(id) {
   scene.remove(room.group);
   room.floorTex.dispose(); room.wallTex.dispose();
   ['n', 'e', 'w'].forEach(tag => disposeFrame(`${id}_${tag}`));
+  // Objets "photo punaisée" de ce mur — rattachés directement à la scène,
+  // pas au groupe de la salle, donc à retirer explicitement ici.
+  ['N', 'E', 'W'].forEach(side => {
+    const wallKey = id + ':' + side;
+    const g = photoObjectGroups[wallKey];
+    if (g) {
+      g.traverse(obj => {
+        if (obj.isMesh) { obj.geometry.dispose(); if (obj.material.map) obj.material.map.dispose(); obj.material.dispose(); }
+      });
+      scene.remove(g);
+      delete photoObjectGroups[wallKey];
+    }
+  });
   doorMeshes = doorMeshes.filter(d => d !== room.doorInRoom);
   delete EXTRA_ROOMS[id];
 }
@@ -1992,6 +2065,13 @@ function rebuildCorridor(force) {
   }
 
   buildGalleryMap(); // carte affichée dans le couloir — toujours à jour avec la géométrie qu'on vient de construire
+
+  // Objets "photo punaisée" : les murs viennent d'être (re)construits
+  // ci-dessus, donc leurs anciens objets photo (rattachés à des meshes de
+  // mur maintenant remplacés) doivent être reconstruits aussi.
+  Object.keys(wallTexts).forEach(wallKey => {
+    if ((wallTexts[wallKey] || []).some(b => b.type === 'photo')) buildPhotoObjectsForWall(wallKey);
+  });
 }
 
 // ============================================================
@@ -3666,6 +3746,41 @@ function wallWorldCenter(wallKey) {
   return null;
 }
 
+// Version complète de wallWorldCenter : donne aussi la normale sortante (loin
+// du couloir/de la salle), l'axe "le long du mur", et les dimensions réelles
+// — de quoi positionner n'importe quel objet (photo, etc.) à un endroit
+// précis de la surface d'un mur, à partir de coordonnées normalisées (0..1).
+function wallWorldTransform(wallKey) {
+  if (isRoomWallKey(wallKey)) {
+    const [roomId, side] = wallKey.split(':');
+    const room = EXTRA_ROOMS[roomId];
+    if (!room) return null;
+    const normals = { N: {x:0,z:-1}, E: {x:1,z:0}, W: {x:-1,z:0} };
+    const normal = normals[side];
+    if (!normal) return null;
+    const center = { x: room.center.x + normal.x*room.size/2, z: room.center.z + normal.z*room.size/2 };
+    return { center, normal, along: { x: -normal.z, z: normal.x }, width: room.size, height: h };
+  }
+  const parts = wallKey.split('|');
+  if (parts.length !== 2) return null;
+  const [ax, az] = parts[0].split(',').map(Number);
+  const [bx, bz] = parts[1].split(',').map(Number);
+  const posA = worldPosForGridCell(ax, az);
+  const posB = worldPosForGridCell(bx, bz);
+  let center, normal;
+  if (posA && posB) {
+    center = { x: (posA.x+posB.x)/2, z: (posA.z+posB.z)/2 };
+    normal = { x: bx-ax, z: bz-az };
+  } else if (posA) {
+    normal = { x: bx-ax, z: bz-az };
+    center = { x: posA.x + normal.x*CELL/2, z: posA.z + normal.z*CELL/2 };
+  } else if (posB) {
+    normal = { x: ax-bx, z: az-bz };
+    center = { x: posB.x + normal.x*CELL/2, z: posB.z + normal.z*CELL/2 };
+  } else return null;
+  return { center, normal, along: { x: -normal.z, z: normal.x }, width: CELL, height: h };
+}
+
 // Affiche (ou retire) un repère montrant où se trouve un cadre existant sur
 // le mur en cours d'édition — toujours centré, puisque les cadres le sont.
 function renderFrameIndicator(wallKey) {
@@ -3872,7 +3987,7 @@ document.getElementById('wallPhotoUrlApply').addEventListener('click', () => {
   const wallKeyAtClick = currentWallTextKey;
   if (wallKeyAtClick) {
     ensurePhotoLoaded(url,
-      () => { applyWallTextToScene(wallKeyAtClick); geoStatusEl.textContent = 'Photo appliquée au mur.'; },
+      () => { buildPhotoObjectsForWall(wallKeyAtClick); geoStatusEl.textContent = 'Photo appliquée au mur.'; },
       () => { geoStatusEl.textContent = 'Échec du chargement de la photo pour le mur 3D (lien invalide, ou le site n\'autorise pas le partage cross-origin/CORS) — elle reste visible ici dans l\'éditeur, mais n\'apparaîtra pas sur le vrai mur tant que ce n\'est pas résolu.'; }
     );
   }
@@ -3944,10 +4059,12 @@ document.getElementById('deleteWallTextBtn').addEventListener('click', () => {
 // reconstruire tout le couloir pour voir le résultat immédiatement.
 function applyWallTextToScene(wallKey) {
   const mesh = wallMeshesForClick.find(w => w.userData.wallKey === wallKey);
-  if (!mesh) return;
-  if (mesh.material.map) mesh.material.map.dispose();
-  mesh.material.map = makeWallTextureWithText(wallKey);
-  mesh.material.needsUpdate = true;
+  if (mesh) {
+    if (mesh.material.map) mesh.material.map.dispose();
+    mesh.material.map = makeWallTextureWithText(wallKey); // texte uniquement
+    mesh.material.needsUpdate = true;
+  }
+  buildPhotoObjectsForWall(wallKey); // objets 3D indépendants pour les photos
 }
 
 // Détecte la frontière de cellule la plus proche du point cliqué sur LE
