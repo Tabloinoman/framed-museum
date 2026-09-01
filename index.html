@@ -214,12 +214,20 @@
   #minimapZoomOverlay .zoomInner {
     position:relative; border:2px solid #cba135; background:#0a0908;
     box-shadow:0 0 50px rgba(203,161,53,.35), 0 20px 60px rgba(0,0,0,.6);
-    padding:14px;
+    padding:14px; display:flex; flex-direction:column; gap:8px;
+  }
+  #minimapZoomScroll {
+    overflow:auto; max-width:calc(100vw - min(340px, 92vw) - 90px); max-height:calc(100vh - 140px);
   }
   #minimapZoomCanvas {
-    display:block; width:min(85vw, calc(100vw - min(340px, 92vw) - 80px)); height:min(78vh, 720px);
-    image-rendering: pixelated; background:#0a0908; cursor:pointer;
+    display:block; image-rendering: pixelated; background:#0a0908; cursor:pointer;
   }
+  #minimapZoomControls { display:flex; gap:8px; justify-content:center; }
+  #minimapZoomControls button {
+    background:rgba(203,161,53,.15); border:1px solid rgba(203,161,53,.5); color:#e8ddc8;
+    width:34px; height:34px; border-radius:6px; cursor:pointer; font-size:1rem;
+  }
+  #minimapZoomControls button:hover { background:rgba(203,161,53,.28); }
   #minimapZoomOverlay .zoomClose {
     position:absolute; top:-14px; right:-14px;
     background:#141110; border:1px solid rgba(203,161,53,.5); color:#e8ddc8;
@@ -239,8 +247,7 @@
     padding:14px;
   }
   #galleryMapZoomCanvas {
-    display:block; width:min(85vw, 900px); aspect-ratio:4/3; height:auto; max-height:78vh;
-    image-rendering: pixelated; background:#0a0908;
+    display:block; image-rendering: pixelated; background:#0a0908;
   }
   #galleryMapZoomOverlay .zoomClose {
     position:absolute; top:-14px; right:-14px;
@@ -502,7 +509,7 @@
     <span class="key">Échap</span> pour libérer le curseur.</p>
     <p class="small" id="blockerSmallHint">Visez un cadre et cliquez pour l'agrandir avec le son. Le bouton ⚙ (en haut à droite) reste toujours accessible.</p>
   </div>
-  <div id="versionTag">V1.6.0</div>
+  <div id="versionTag">V1.6.2</div>
 </div>
 
 <div id="crosshair"></div>
@@ -534,7 +541,14 @@
 
 <div id="minimapZoomOverlay">
   <div class="zoomInner">
-    <canvas id="minimapZoomCanvas" width="1000" height="700"></canvas>
+    <div id="minimapZoomScroll">
+      <canvas id="minimapZoomCanvas" width="1000" height="700"></canvas>
+    </div>
+    <div id="minimapZoomControls">
+      <button id="minimapZoomOut" title="Réduire">−</button>
+      <button id="minimapZoomReset" title="Réinitialiser le zoom">⤢</button>
+      <button id="minimapZoomIn" title="Agrandir">+</button>
+    </div>
     <button class="zoomClose" id="closeMinimapZoomBtn" title="Fermer">✕</button>
   </div>
 </div>
@@ -691,6 +705,7 @@
     <input type="text" id="frameEditUrl" placeholder="https://... ou <iframe src=...></iframe>">
     <div class="row">
       <button class="secondary" id="frameEditApply">Appliquer ce lien</button>
+      <button class="secondary" id="frameEditClearLink">Retirer ce lien</button>
     </div>
     <label style="margin-top:6px;">Ou depuis un fichier local (session en cours seulement)</label>
     <input type="file" id="frameEditFile" accept="video/*">
@@ -3888,6 +3903,25 @@ document.getElementById('frameEditFile').addEventListener('change', (e) => {
   refreshFrameEditDisplay();
 });
 
+document.getElementById('frameEditClearLink').addEventListener('click', () => {
+  if (!editingFrameContext || !frames[editingFrameContext.frameId]) return;
+  const frame = frames[editingFrameContext.frameId];
+  // Vide complètement le lien de clic (pas la vidéo de démonstration comme
+  // "Réinitialiser ce cadre" — un vrai vide) : un clic sur ce cadre affichera
+  // désormais son aperçu à la place, s'il y en a un.
+  clearStoredUrl(frame.config.id);
+  frame.currentSrc = '';
+  frame.kind = 'video';
+  frame.embedUrl = null;
+  frame.video.pause();
+  frame.video.removeAttribute('src');
+  frame.video.load();
+  if (frame.previewTexture) { frame.screen.material.map = frame.previewTexture; frame.screen.material.needsUpdate = true; }
+  saveToGoogleSheet(frame.config.id);
+  geoStatusEl.textContent = `Lien de clic retiré pour "${frameDisplayLabel(frame)}" — un clic affichera son aperçu à la place, s'il y en a un.`;
+  refreshFrameEditDisplay();
+});
+
 document.getElementById('frameEditReset').addEventListener('click', () => {
   if (!editingFrameContext || !frames[editingFrameContext.frameId]) return;
   const frame = frames[editingFrameContext.frameId];
@@ -4000,13 +4034,66 @@ document.getElementById('toggleInternalWallBtn').addEventListener('click', () =>
 // d'œil, et cliquable exactement comme le petit aperçu.
 const minimapZoomOverlay = document.getElementById('minimapZoomOverlay');
 const minimapZoomCanvas = document.getElementById('minimapZoomCanvas');
+// Calcule une taille d'affichage (en pixels CSS) qui respecte le VRAI ratio
+// interne du canvas (sa résolution, pas sa taille affichée) — plus fiable
+// que de dépendre de aspect-ratio CSS combiné à des contraintes min/max,
+// mal géré sur certains navigateurs mobiles.
+function fitCanvasDisplaySize(canvas, maxW, maxH) {
+  const ratio = canvas.width / canvas.height;
+  let w = maxW, h = w / ratio;
+  if (h > maxH) { h = maxH; w = h * ratio; }
+  w = Math.max(100, Math.round(w)); h = Math.max(75, Math.round(h));
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
+  return { w, h };
+}
+
+const minimapZoomScroll = document.getElementById('minimapZoomScroll');
+let minimapZoomLevel = 1;
+let minimapZoomBaseSize = null;
+function sizeMinimapZoomCanvas() {
+  const availW = minimapZoomOverlay.clientWidth - 90;
+  const availH = minimapZoomOverlay.clientHeight - 150; // marge pour bordure/boutons de zoom
+  minimapZoomBaseSize = fitCanvasDisplaySize(minimapZoomCanvas, Math.max(200, availW), Math.max(150, availH));
+  applyMinimapZoomLevel();
+}
+function applyMinimapZoomLevel() {
+  if (!minimapZoomBaseSize) return;
+  minimapZoomCanvas.style.width = Math.round(minimapZoomBaseSize.w * minimapZoomLevel) + 'px';
+  minimapZoomCanvas.style.height = Math.round(minimapZoomBaseSize.h * minimapZoomLevel) + 'px';
+}
+document.getElementById('minimapZoomIn').addEventListener('click', () => {
+  minimapZoomLevel = Math.min(3, minimapZoomLevel + 0.5);
+  applyMinimapZoomLevel();
+});
+document.getElementById('minimapZoomOut').addEventListener('click', () => {
+  minimapZoomLevel = Math.max(1, minimapZoomLevel - 0.5);
+  applyMinimapZoomLevel();
+});
+document.getElementById('minimapZoomReset').addEventListener('click', () => {
+  minimapZoomLevel = 1;
+  applyMinimapZoomLevel();
+  minimapZoomScroll.scrollLeft = 0; minimapZoomScroll.scrollTop = 0;
+});
+// Molette = zoom (comme sur une vraie carte), pas de défilement de page.
+minimapZoomScroll.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  minimapZoomLevel = Math.max(1, Math.min(3, minimapZoomLevel + (e.deltaY < 0 ? 0.25 : -0.25)));
+  applyMinimapZoomLevel();
+}, { passive: false });
+
 function openMinimapZoom() {
   minimapZoomOverlay.classList.add('open');
+  minimapZoomLevel = 1;
+  sizeMinimapZoomCanvas();
   drawMinimapInto(minimapZoomCanvas);
 }
 function closeMinimapZoom() {
   minimapZoomOverlay.classList.remove('open');
 }
+window.addEventListener('resize', () => {
+  if (minimapZoomOverlay.classList.contains('open')) sizeMinimapZoomCanvas();
+});
 function redrawAllMinimaps() { drawMinimap(); } // conservé pour compatibilité, drawMinimap() fait déjà les deux
 document.getElementById('closeMinimapZoomBtn').addEventListener('click', closeMinimapZoom);
 minimapZoomOverlay.addEventListener('click', (e) => {
@@ -4025,6 +4112,7 @@ function openGalleryMapZoom() {
   mobileActive = false;
   if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
   onGameDeactivated();
+  fitCanvasDisplaySize(galleryMapZoomCanvas, window.innerWidth * 0.85, window.innerHeight * 0.78);
   const zctx = galleryMapZoomCanvas.getContext('2d');
   zctx.clearRect(0, 0, galleryMapZoomCanvas.width, galleryMapZoomCanvas.height);
   zctx.drawImage(galleryMapCanvas, 0, 0, galleryMapZoomCanvas.width, galleryMapZoomCanvas.height);
