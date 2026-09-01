@@ -235,6 +235,21 @@
     text-shadow:0 2px 5px rgba(0,0,0,.7); padding:2px 4px; line-height:1.2;
   }
   .wallTextBlock.selected { outline:1.5px dashed rgba(203,161,53,.85); outline-offset:4px; }
+  .wallPhotoBlock {
+    position:absolute; cursor:move; user-select:none; touch-action:none;
+    padding:8px 8px 12px; background:#f4f0e6; box-shadow:0 4px 14px rgba(0,0,0,.55);
+  }
+  .wallPhotoBlock img { display:block; width:160px; height:120px; object-fit:cover; }
+  .wallPhotoBlock.selected { outline:1.5px dashed rgba(203,161,53,.85); outline-offset:4px; }
+  .wallPhotoBlock::before {
+    content:''; position:absolute; top:-7px; left:50%; margin-left:-7px;
+    width:14px; height:14px; border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, #e8776a, #a8362a);
+    box-shadow:0 2px 4px rgba(0,0,0,.6);
+  }
+  #wallPhotoOnlyControls, #wallTextOnlyControls { display:none; }
+  #wallTextBlockControls.mode-text #wallTextOnlyControls { display:flex; flex-direction:column; gap:6px; }
+  #wallTextBlockControls.mode-photo #wallPhotoOnlyControls { display:flex; flex-direction:column; gap:6px; }
   #wallTextOverlay .zoomClose {
     position:absolute; top:8px; right:8px; z-index:2;
     background:#141110; border:1px solid rgba(203,161,53,.5); color:#e8ddc8;
@@ -255,6 +270,7 @@
   }
   #wallTextToolbar button:hover { background:rgba(203,161,53,.28); }
   #wallTextToolbar button.secondary { background:transparent; border-color:rgba(203,161,53,.3); opacity:.85; }
+  #wallTextToolbar > .row button { flex:1; }
   #wallTextBlockControls {
     display:none; flex-direction:column; gap:6px; width:100%; margin-top:6px;
     padding-top:10px; border-top:1px dashed rgba(203,161,53,.25);
@@ -270,7 +286,7 @@
     font-family:Georgia,serif; font-size:.82rem; background:#0a0908; color:#e8ddc8;
     border:1px solid rgba(203,161,53,.3); border-radius:6px; padding:6px 8px;
   }
-  #wallTextBlockControls .row { display:flex; gap:8px; align-items:center; }
+  #wallTextBlockControls .row, #wallTextToolbar > .row { display:flex; gap:8px; align-items:center; }
   #wallTextBlockControls .toggleBtn { flex:1; }
   #wallTextBlockControls .toggleBtn.active { background:rgba(203,161,53,.4); border-color:#cba135; }
 
@@ -373,6 +389,7 @@
   }
   #geoPanel button:hover { background:#e0b94a; }
   #geoPanel .secondary { background:transparent; border:1px solid #3a332c; color:#a89a82; }
+  #geoPanel .secondary.active { background:rgba(120,180,90,.22); border-color:#7ab45a; color:#cdeab5; }
   #geoPanel .secondary:hover { background:#1e1a16; color:#e8ddc8; }
   #geoPanel .status { font-size:.75rem; color:#7c9c7c; min-height:16px; }
   #geoPanel .segRow {
@@ -480,35 +497,48 @@
     </div>
   </div>
   <div id="wallTextToolbar">
-    <button id="addWallTextBtn">+ Ajouter un texte</button>
+    <div class="row">
+      <button id="addWallTextBtn">+ Ajouter un texte</button>
+      <button id="addWallPhotoBtn">+ Ajouter une photo</button>
+    </div>
     <div id="wallTextBlockControls">
-      <label>Texte</label>
-      <textarea id="wallTextContent" rows="2" placeholder="Votre texte…"></textarea>
-      <label>Police</label>
-      <select id="wallTextFontFamily">
-        <option value="Georgia, 'Times New Roman', serif">Georgia (classique)</option>
-        <option value="'Times New Roman', Times, serif">Times New Roman</option>
-        <option value="Arial, Helvetica, sans-serif">Arial</option>
-        <option value="'Trebuchet MS', sans-serif">Trebuchet MS</option>
-        <option value="Impact, 'Arial Narrow', sans-serif">Impact</option>
-        <option value="'Courier New', Courier, monospace">Courier New</option>
-        <option value="'Brush Script MT', cursive">Brush Script (manuscrite)</option>
-      </select>
-      <div class="row">
-        <label style="flex:1;">Taille de police <span id="wallTextFontSizeValue">32</span>px</label>
+      <div id="wallTextOnlyControls">
+        <label>Texte</label>
+        <textarea id="wallTextContent" rows="2" placeholder="Votre texte…"></textarea>
+        <label>Police</label>
+        <select id="wallTextFontFamily">
+          <option value="Georgia, 'Times New Roman', serif">Georgia (classique)</option>
+          <option value="'Times New Roman', Times, serif">Times New Roman</option>
+          <option value="Arial, Helvetica, sans-serif">Arial</option>
+          <option value="'Trebuchet MS', sans-serif">Trebuchet MS</option>
+          <option value="Impact, 'Arial Narrow', sans-serif">Impact</option>
+          <option value="'Courier New', Courier, monospace">Courier New</option>
+          <option value="'Brush Script MT', cursive">Brush Script (manuscrite)</option>
+        </select>
+        <div class="row">
+          <label style="flex:1;">Taille de police <span id="wallTextFontSizeValue">32</span>px</label>
+        </div>
+        <input type="range" id="wallTextFontSize" min="10" max="120" step="2" value="32">
+        <div class="row">
+          <button class="secondary toggleBtn" id="wallTextBoldBtn"><b>G</b> Gras</button>
+          <button class="secondary toggleBtn" id="wallTextItalicBtn"><i>I</i> Italique</button>
+        </div>
+        <label>Couleur</label>
+        <input type="color" id="wallTextColor" value="#e8ddc8">
       </div>
-      <input type="range" id="wallTextFontSize" min="10" max="120" step="2" value="32">
-      <div class="row">
-        <button class="secondary toggleBtn" id="wallTextBoldBtn"><b>G</b> Gras</button>
-        <button class="secondary toggleBtn" id="wallTextItalicBtn"><i>I</i> Italique</button>
+      <div id="wallPhotoOnlyControls">
+        <label>URL de la photo</label>
+        <input type="text" id="wallPhotoUrl" placeholder="https://exemple.com/photo.jpg">
+        <div class="row">
+          <button class="secondary" id="wallPhotoUrlApply">Charger cette photo</button>
+        </div>
+        <p class="urlHint" style="margin:4px 0 0;">Punaise ajoutée automatiquement. Le site hébergeur doit autoriser le partage cross-origin (CORS).</p>
       </div>
       <label>Rotation <span id="wallTextRotationValue">0</span>°</label>
       <input type="range" id="wallTextRotation" min="-180" max="180" step="5" value="0">
       <label>Échelle <span id="wallTextScaleValue">1</span>×</label>
       <input type="range" id="wallTextScale" min="0.3" max="3" step="0.1" value="1">
-      <label>Couleur</label>
-      <input type="color" id="wallTextColor" value="#e8ddc8">
-      <button class="secondary" id="deleteWallTextBtn">Supprimer ce texte</button>
+      <button class="secondary" id="deleteWallTextBtn">Supprimer ce bloc</button>
     </div>
   </div>
 </div>
@@ -626,6 +656,9 @@
     <div class="field">
       <label>Aperçu du tracé (vu du dessus)</label>
       <canvas id="geoMinimap" width="288" height="220"></canvas>
+      <div class="row" style="margin-top:6px;">
+        <button class="secondary" id="plantModeBtnCorridor" title="Cliquez pour ajouter une plante à cet endroit, recliquez sur une plante pour la retirer">🌿 Placer des plantes</button>
+      </div>
       <p class="urlHint">Cliquez sur un bord de case : entre deux cases du tracé, bascule un mur (<span style="color:#c0524a">rouge</span>) ou une ouverture ; sur un mur extérieur, le <span style="color:#6fb8d1">sélectionne</span> (pour y ajouter un couloir, un virage, une porte, ou gérer son cadre). Un losange <span style="color:#a685cf">mauve</span> signale un mur qui porte déjà un cadre. Cliquez hors du tracé pour ouvrir une vue agrandie, tout aussi cliquable.</p>
     </div>
 
@@ -696,6 +729,9 @@
     <div class="field">
       <label>Aperçu de la salle (vue du dessus)</label>
       <canvas id="roomMinimap" width="288" height="220"></canvas>
+      <div class="row" style="margin-top:6px;">
+        <button class="secondary" id="plantModeBtnRoom" title="Cliquez pour ajouter une plante à cet endroit, recliquez sur une plante pour la retirer">🌿 Placer des plantes</button>
+      </div>
       <p class="urlHint">Cliquez sur un mur (Nord, Est ou Ouest) pour gérer son cadre. Le Sud porte la porte de retour.</p>
     </div>
 
@@ -1009,6 +1045,32 @@ function renderWallCanvas(wallKey, canvas) {
 
   const blocks = wallTexts[wallKey] || [];
   blocks.forEach(b => {
+    if (b.type === 'photo') {
+      if (!b.url) return;
+      const entry = ensurePhotoLoaded(b.url, () => refreshWallTextureFor(wallKey));
+      if (!entry.loaded) return; // sera redessiné dès que le chargement aboutit
+      const img = entry.source;
+      ctx.save();
+      ctx.translate(b.x * canvas.width, b.y * canvas.height);
+      ctx.rotate((b.rotation || 0) * Math.PI / 180);
+      ctx.scale(b.scale || 1, b.scale || 1);
+      const w = canvas.width * 0.16, h = w * 0.75; // ~4:3, environ 16% de la largeur du mur
+      // Petit cadre clair façon polaroid, avec une marge en bas.
+      ctx.shadowColor = 'rgba(0,0,0,.55)';
+      ctx.shadowBlur = 10;
+      ctx.fillStyle = '#f4f0e6';
+      ctx.fillRect(-w/2 - 6, -h/2 - 6, w + 12, h + 22);
+      ctx.shadowBlur = 0;
+      ctx.drawImage(img, -w/2, -h/2, w, h);
+      // Punaise.
+      const pinY = -h/2 - 14;
+      const grad = ctx.createRadialGradient(-2, pinY-2, 1, 0, pinY, 7);
+      grad.addColorStop(0, '#e8776a'); grad.addColorStop(1, '#a8362a');
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(0, pinY, 6, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+      return;
+    }
     ctx.save();
     ctx.translate(b.x * canvas.width, b.y * canvas.height);
     ctx.rotate((b.rotation || 0) * Math.PI / 180);
@@ -1026,6 +1088,38 @@ function renderWallCanvas(wallKey, canvas) {
     });
     ctx.restore();
   });
+}
+
+// Cache des photos punaisées (chargement asynchrone, à faire une seule fois
+// par URL) — plafonnées à une résolution modeste, ce sont de petites photos
+// décoratives, pas besoin de la pleine résolution d'origine.
+const photoImageCache = {};
+function ensurePhotoLoaded(url, onLoaded) {
+  let entry = photoImageCache[url];
+  if (entry) {
+    if (entry.loaded) { if (onLoaded) onLoaded(); }
+    else if (onLoaded) entry.waiters.push(onLoaded);
+    return entry;
+  }
+  entry = { loaded: false, source: null, waiters: onLoaded ? [onLoaded] : [] };
+  photoImageCache[url] = entry;
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    entry.source = capImageSize(img, 512);
+    entry.loaded = true;
+    entry.waiters.forEach(fn => fn());
+    entry.waiters = [];
+  };
+  img.onerror = () => { delete photoImageCache[url]; };
+  img.src = url;
+  return entry;
+}
+
+// Redessine la texture 3D réelle d'un mur (utile quand une photo finit de
+// charger APRÈS le premier passage de rendu, par exemple).
+function refreshWallTextureFor(wallKey) {
+  applyWallTextToScene(wallKey);
 }
 
 // Génère la texture 3D (avec le texte) pour un mur donné.
@@ -1271,6 +1365,11 @@ function buildExtraRoom(id, center, size, palette) {
   // ajoute désormais un par un, à la demande, en sélectionnant le mur dans
   // l'éditeur de géométrie (case "Activer un cadre ici").
 
+  // Plantes placées manuellement pour CETTE salle (même mécanisme que le couloir).
+  manualPlants.filter(p => p.kind === 'room' && p.roomId === id).forEach(p => {
+    buildPlantAt(p.x, p.z, group);
+  });
+
   EXTRA_ROOMS[id] = { center, size, doorInRoom, group, palette, floorTex, wallTex, wallMeshesBySide };
   return doorInRoom;
 }
@@ -1379,6 +1478,15 @@ let disabledBaseFrames = {};
 // par défaut chaque cadre démarre coupé (voir createFrame), donc seul un
 // "son activé" a besoin d'être mémorisé pour survivre à un rechargement.
 let frameUnmuted = {};
+// Plantes placées manuellement (couloir ou salle) : { id, kind:'corridor'|'room',
+// roomId (si salle), x, z (coordonnées monde), seed (apparence stable) }.
+// Remplace le placement 100% aléatoire d'origine.
+let manualPlants = [];
+// Vrai après la toute première génération de plantes aléatoires de départ
+// (voir plus bas) — pour ne les générer qu'une seule fois par session, pas à
+// chaque reconstruction du couloir.
+let plantsSeeded = false;
+let plantPlacementMode = false; // vrai pendant qu'on clique pour ajouter des plantes sur la carte
 // Passe à true après le premier vrai geste utilisateur (clic pour entrer) —
 // déclarée ici (tôt) et pas plus bas, car createFrame doit pouvoir la lire
 // dès la création des tout premiers cadres (les 4 de base).
@@ -1426,16 +1534,16 @@ function addLampAt(x, z, group, bright) {
 // sansevieria, ou en fougère touffue), tirées au hasard à chaque appel, pour
 // varier l'ambiance d'un pot à l'autre comme dans un vrai intérieur.
 
-function addBushyFoliage(group, leafMat) {
-  const leafCount = 4 + Math.floor(Math.random()*3);
+function addBushyFoliage(group, leafMat, rng) {
+  const leafCount = 4 + Math.floor(rng()*3);
   for (let i = 0; i < leafCount; i++) {
-    const size = 0.16 + Math.random()*0.14;
+    const size = 0.16 + rng()*0.14;
     const leaf = new THREE.Mesh(new THREE.ConeGeometry(size*0.42, size*1.7, 5), leafMat);
-    const angle = (i/leafCount) * Math.PI*2 + Math.random()*0.6;
-    const radius = 0.03 + Math.random()*0.07;
+    const angle = (i/leafCount) * Math.PI*2 + rng()*0.6;
+    const radius = 0.03 + rng()*0.07;
     leaf.position.set(Math.cos(angle)*radius, 0.26 + size*0.75, Math.sin(angle)*radius);
-    leaf.rotation.z = (Math.random()-0.5)*0.7;
-    leaf.rotation.x = (Math.random()-0.5)*0.4 + 0.15;
+    leaf.rotation.z = (rng()-0.5)*0.7;
+    leaf.rotation.x = (rng()-0.5)*0.4 + 0.15;
     leaf.castShadow = true;
     group.add(leaf);
   }
@@ -1443,15 +1551,15 @@ function addBushyFoliage(group, leafMat) {
 
 // Quelques grandes feuilles larges et plates qui s'ouvrent vers l'extérieur,
 // façon philodendron/oreille d'éléphant.
-function addBroadLeafFoliage(group, leafMat) {
-  const count = 3 + Math.floor(Math.random()*2);
+function addBroadLeafFoliage(group, leafMat, rng) {
+  const count = 3 + Math.floor(rng()*2);
   for (let i = 0; i < count; i++) {
-    const length = 0.34 + Math.random()*0.18;
+    const length = 0.34 + rng()*0.18;
     const width = length*0.34;
     const leaf = new THREE.Mesh(new THREE.ConeGeometry(width*0.5, length, 3), leafMat);
     leaf.scale.z = 0.16; // aplatit la section triangulaire en forme de lame
-    const angle = (i/count)*Math.PI*2 + Math.random()*0.8;
-    const lean = 0.4 + Math.random()*0.35;
+    const angle = (i/count)*Math.PI*2 + rng()*0.8;
+    const lean = 0.4 + rng()*0.35;
     leaf.position.set(Math.cos(angle)*0.03, 0.26 + length*0.5, Math.sin(angle)*0.03);
     leaf.rotation.y = angle;
     leaf.rotation.z = lean;
@@ -1461,31 +1569,31 @@ function addBroadLeafFoliage(group, leafMat) {
 }
 
 // Longues lames dressées à la verticale, façon sansevieria/plante-serpent.
-function addSpikyFoliage(group, leafMat) {
-  const count = 5 + Math.floor(Math.random()*4);
+function addSpikyFoliage(group, leafMat, rng) {
+  const count = 5 + Math.floor(rng()*4);
   for (let i = 0; i < count; i++) {
-    const height = 0.36 + Math.random()*0.26;
+    const height = 0.36 + rng()*0.26;
     const blade = new THREE.Mesh(new THREE.ConeGeometry(0.035, height, 3), leafMat);
     blade.scale.z = 0.25;
-    const angle = Math.random()*Math.PI*2;
-    const radius = Math.random()*0.08;
+    const angle = rng()*Math.PI*2;
+    const radius = rng()*0.08;
     blade.position.set(Math.cos(angle)*radius, 0.26 + height*0.5, Math.sin(angle)*radius);
     blade.rotation.y = angle;
-    blade.rotation.z = (Math.random()-0.5)*0.15; // presque droites, léger désaxage
+    blade.rotation.z = (rng()-0.5)*0.15; // presque droites, léger désaxage
     blade.castShadow = true;
     group.add(blade);
   }
 }
 
 // Beaucoup de petites lames fines qui retombent vers l'extérieur, façon fougère.
-function addFernFoliage(group, leafMat) {
-  const count = 8 + Math.floor(Math.random()*5);
+function addFernFoliage(group, leafMat, rng) {
+  const count = 8 + Math.floor(rng()*5);
   for (let i = 0; i < count; i++) {
-    const length = 0.16 + Math.random()*0.13;
+    const length = 0.16 + rng()*0.13;
     const blade = new THREE.Mesh(new THREE.ConeGeometry(length*0.18, length, 3), leafMat);
     blade.scale.z = 0.2;
-    const angle = (i/count)*Math.PI*2 + Math.random()*0.5;
-    const droop = 0.9 + Math.random()*0.5;
+    const angle = (i/count)*Math.PI*2 + rng()*0.5;
+    const droop = 0.9 + rng()*0.5;
     blade.position.set(Math.cos(angle)*0.05, 0.26 + length*0.35, Math.sin(angle)*0.05);
     blade.rotation.y = angle;
     blade.rotation.x = droop;
@@ -1496,10 +1604,23 @@ function addFernFoliage(group, leafMat) {
 
 const PLANT_SPECIES = [addBushyFoliage, addBroadLeafFoliage, addSpikyFoliage, addFernFoliage];
 
-function createPottedPlant() {
+// Petit générateur pseudo-aléatoire à seed fixe (même algorithme que
+// l'export Blender) — utilisé pour qu'une plante placée manuellement garde
+// toujours la même apparence, même reconstruite plusieurs fois.
+function mulberry32(seed) {
+  return function() {
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function createPottedPlant(rng) {
+  rng = rng || Math.random;
   const group = new THREE.Group();
 
-  const potColor = [0x9a5a35, 0x8b4f30, 0xa8663f][Math.floor(Math.random()*3)];
+  const potColor = [0x9a5a35, 0x8b4f30, 0xa8663f][Math.floor(rng()*3)];
   const potMat = new THREE.MeshStandardMaterial({ color: potColor, roughness: 0.9, flatShading: true });
   const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.12, 0.26, 7), potMat);
   pot.position.y = 0.13;
@@ -1513,15 +1634,36 @@ function createPottedPlant() {
   soil.position.y = 0.26;
   group.add(soil);
 
-  const leafColor = [0x3d6b34, 0x33613a, 0x4a7a3a, 0x2f5a2a][Math.floor(Math.random()*4)];
+  const leafColor = [0x3d6b34, 0x33613a, 0x4a7a3a, 0x2f5a2a][Math.floor(rng()*4)];
   const leafMat = new THREE.MeshStandardMaterial({ color: leafColor, roughness: 0.85, flatShading: true, side: THREE.DoubleSide });
-  const species = PLANT_SPECIES[Math.floor(Math.random()*PLANT_SPECIES.length)];
-  species(group, leafMat);
+  const species = PLANT_SPECIES[Math.floor(rng()*PLANT_SPECIES.length)];
+  species(group, leafMat, rng);
 
-  const scale = 0.85 + Math.random()*0.4;
+  const scale = 0.85 + rng()*0.4;
   group.scale.set(scale, scale, scale);
-  group.rotation.y = Math.random()*Math.PI*2;
+  group.rotation.y = rng()*Math.PI*2;
   return group;
+}
+
+const SOCLE_HEIGHT = EYE_HEIGHT / 2; // à mi-hauteur entre le sol et la caméra
+
+// Construit une plante (avec son petit socle-colonne) à une position monde
+// donnée, dans le groupe fourni — partagé entre couloir et salles. Son
+// apparence (espèce, couleurs, taille) est tirée au hasard à chaque
+// reconstruction, comme n'importe quelle nouvelle plante.
+function buildPlantAt(px, pz, group) {
+  const socle = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.2, 0.24, SOCLE_HEIGHT, 8),
+    new THREE.MeshStandardMaterial({ color: 0x2c2620, roughness: 0.9, flatShading: true })
+  );
+  socle.position.set(px, SOCLE_HEIGHT/2, pz);
+  socle.castShadow = true;
+  socle.receiveShadow = true;
+  group.add(socle);
+
+  const plant = createPottedPlant();
+  plant.position.set(px, SOCLE_HEIGHT, pz);
+  group.add(plant);
 }
 
 function buildFloorCeilingTile(cx, cz, group) {
@@ -1594,6 +1736,57 @@ function walkSegments(segments) {
   return { visited, straightInfos, endX: x, endZ: z, endDir: CARDINAL[dirKey] };
 }
 
+// Grande carte affichée dans le couloir, près du point de départ (mur Ouest
+// de la toute première cellule) — reprend le même rendu que l'aperçu du
+// tracé dans l'éditeur, mais sur la géométrie RÉELLEMENT appliquée (pas un
+// brouillon en cours d'édition), reconstruite à chaque changement.
+let galleryMapGroup = null;
+function buildGalleryMap() {
+  if (galleryMapGroup) {
+    galleryMapGroup.traverse(obj => {
+      if (obj.isMesh) {
+        obj.geometry.dispose();
+        if (obj.material.map) obj.material.map.dispose();
+        obj.material.dispose();
+      }
+    });
+    scene.remove(galleryMapGroup);
+    galleryMapGroup = null;
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 640; canvas.height = 480;
+  drawMinimapInto(canvas, true); // true = géométrie réellement appliquée
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+
+  const mapW = CELL * 0.82, mapH = mapW * (canvas.height / canvas.width);
+  const rotY = wallRotationForInwardNormal(1, 0); // mur Ouest, normale vers l'intérieur (+X)
+  const posX = -CELL/2 + 0.08, posZ = CORRIDOR_START_Z;
+
+  galleryMapGroup = new THREE.Group();
+
+  const border = new THREE.Mesh(
+    new THREE.PlaneGeometry(mapW + 0.05, mapH + 0.05),
+    new THREE.MeshStandardMaterial({ color: 0xf2f0ea, roughness: 0.6, side: THREE.DoubleSide })
+  );
+  border.position.set(posX - 0.015, h/2, posZ);
+  border.rotation.y = rotY;
+  galleryMapGroup.add(border);
+
+  const map = new THREE.Mesh(
+    new THREE.PlaneGeometry(mapW, mapH),
+    new THREE.MeshStandardMaterial({ map: tex, roughness: 0.75, side: THREE.DoubleSide })
+  );
+  map.position.set(posX, h/2, posZ);
+  map.rotation.y = rotY;
+  map.receiveShadow = true;
+  galleryMapGroup.add(map);
+
+  scene.add(galleryMapGroup);
+}
+
 function rebuildCorridor(force) {
   // Nettoie l'ancienne géométrie (dispose pour éviter les fuites mémoire)
   corridorGroup.traverse(obj => {
@@ -1655,56 +1848,53 @@ function rebuildCorridor(force) {
     addLampAt(cell.x, cell.z, corridorGroup, isJunction);
   });
 
-  // Petites plantes en pot, posées au hasard contre de vrais murs (jamais
-  // dans une ouverture/un passage, ni une porte), de préférence sur un mur
-  // qui ne porte pas déjà un cadre — sur une colonne-socle, pour habiller
-  // le couloir. Environ une cellule sur cinq.
-  const wallDirsList = ['N', 'S', 'E', 'W'];
-  const SOCLE_HEIGHT = EYE_HEIGHT / 2; // à mi-hauteur entre le sol et la caméra
-  function wallHasDoor(cell, sideKey) {
-    const dir = CARDINAL[sideKey];
-    const gx = Math.round(cell.x / CELL), gz = Math.round(cell.z / CELL);
-    if (manualEdges[edgeKey(gx, gz, sideKey)] === 'door') return true; // porte de salle de poche
-    if (cell.x === 0 && cell.z === CORRIDOR_START_Z && sideKey === 'S') return true; // porte salle 2
-    if (EXTRA_ROOMS.room3 && cell.x === endX && cell.z === endZ && dir.x === endDir.x && dir.z === endDir.z) return true; // porte salle 3
-    return false;
-  }
-  visited.forEach(cell => {
-    if (Math.random() > 0.18) return;
-    const gx = Math.round(cell.x / CELL), gz = Math.round(cell.z / CELL);
-    const pad = padMap.get(gx + ',' + gz);
-    if (!pad) return;
-    let closedSides = wallDirsList.filter(k => pad[k] === 0 && !wallHasDoor(cell, k));
-    if (closedSides.length === 0) return; // pas de mur disponible (ouvert, ou seulement des portes)
-
-    // Préfère un mur qui ne porte pas déjà un cadre.
-    const sidesWithoutFrame = closedSides.filter(k => {
-      const dir = CARDINAL[k];
-      return !findFrameNearWall(cell.x + dir.x*CELL/2, cell.z + dir.z*CELL/2);
+  // Au tout premier chargement (aucune plante enregistrée nulle part), on
+  // génère quelques plantes de départ au hasard — mais elles rejoignent
+  // ensuite le système manuel : modifiables/supprimables comme n'importe
+  // quelle plante posée à la main, pas régénérées à chaque reconstruction.
+  if (!plantsSeeded) {
+    plantsSeeded = true;
+    const wallDirsList = ['N', 'S', 'E', 'W'];
+    function wallHasDoor(cell, sideKey) {
+      const dir = CARDINAL[sideKey];
+      const gx = Math.round(cell.x / CELL), gz = Math.round(cell.z / CELL);
+      if (manualEdges[edgeKey(gx, gz, sideKey)] === 'door') return true;
+      if (cell.x === 0 && cell.z === CORRIDOR_START_Z && sideKey === 'S') return true;
+      if (EXTRA_ROOMS.room3 && cell.x === endX && cell.z === endZ && dir.x === endDir.x && dir.z === endDir.z) return true;
+      return false;
+    }
+    visited.forEach(cell => {
+      if (Math.random() > 0.18) return;
+      const gx = Math.round(cell.x / CELL), gz = Math.round(cell.z / CELL);
+      const pad = padMap.get(gx + ',' + gz);
+      if (!pad) return;
+      let closedSides = wallDirsList.filter(k => pad[k] === 0 && !wallHasDoor(cell, k));
+      if (closedSides.length === 0) return;
+      const sidesWithoutFrame = closedSides.filter(k => {
+        const dir = CARDINAL[k];
+        return !findFrameNearWall(cell.x + dir.x*CELL/2, cell.z + dir.z*CELL/2);
+      });
+      if (sidesWithoutFrame.length > 0) closedSides = sidesWithoutFrame;
+      else return;
+      const side = closedSides[Math.floor(Math.random()*closedSides.length)];
+      const dir = CARDINAL[side];
+      const along = { x: -dir.z, z: dir.x };
+      const offsetAlong = (Math.random() - 0.5) * (CELL - 1.2);
+      const wallInset = CELL/2 - 0.35;
+      manualPlants.push({
+        id: 'plant_' + Date.now() + '_' + Math.floor(Math.random()*100000),
+        kind: 'corridor',
+        x: cell.x + dir.x*wallInset + along.x*offsetAlong,
+        z: cell.z + dir.z*wallInset + along.z*offsetAlong,
+      });
     });
-    if (sidesWithoutFrame.length > 0) closedSides = sidesWithoutFrame;
-    else return; // tous les murs disponibles ici portent déjà un cadre : pas de plante à cet endroit
+  }
 
-    const side = closedSides[Math.floor(Math.random()*closedSides.length)];
-    const dir = CARDINAL[side];
-    const along = { x: -dir.z, z: dir.x }; // le long du mur, perpendiculaire à sa normale
-    const offsetAlong = (Math.random() - 0.5) * (CELL - 1.2);
-    const wallInset = CELL/2 - 0.35; // légèrement décollée du mur
-    const px = cell.x + dir.x*wallInset + along.x*offsetAlong;
-    const pz = cell.z + dir.z*wallInset + along.z*offsetAlong;
-
-    const socle = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.2, 0.24, SOCLE_HEIGHT, 8),
-      new THREE.MeshStandardMaterial({ color: 0x2c2620, roughness: 0.9, flatShading: true })
-    );
-    socle.position.set(px, SOCLE_HEIGHT/2, pz);
-    socle.castShadow = true;
-    socle.receiveShadow = true;
-    corridorGroup.add(socle);
-
-    const plant = createPottedPlant();
-    plant.position.set(px, SOCLE_HEIGHT, pz);
-    corridorGroup.add(plant);
+  // Plantes en pot du couloir : celles placées manuellement (ou générées au
+  // tout premier chargement, voir juste au-dessus) — modifiables via le
+  // bouton 🌿 de l'éditeur de géométrie.
+  manualPlants.filter(p => p.kind === 'corridor').forEach(p => {
+    buildPlantAt(p.x, p.z, corridorGroup);
   });
 
   // Zones praticables : chaque cellule ne s'étend au-delà de ses limites
@@ -1792,6 +1982,8 @@ function rebuildCorridor(force) {
     yawObject.rotation.y = 0; pitchObject.rotation.x = 0;
     verticalVelocity = 0; isGrounded = true;
   }
+
+  buildGalleryMap(); // carte affichée dans le couloir — toujours à jour avec la géométrie qu'on vient de construire
 }
 
 // ============================================================
@@ -2966,10 +3158,10 @@ function syncDraftFromApplied() {
 
 // Calcule la disposition (cellules + repère pixel) de l'aperçu du tracé,
 // partagée entre le dessin et la détection de clic pour rester cohérente.
-function computeMinimapLayout(canvas) {
+function computeMinimapLayout(canvas, useApplied) {
   canvas = canvas || geoMinimap;
   const W = canvas.width, H = canvas.height;
-  const { visited } = walkSegments(computeDraftSegments());
+  const { visited } = walkSegments(useApplied ? corridorSegments : computeDraftSegments());
   const cells = [];
   let minGX = Infinity, maxGX = -Infinity, minGZ = Infinity, maxGZ = -Infinity;
   visited.forEach(cell => {
@@ -2996,16 +3188,33 @@ function findCellWorldPos(cells, gx, gz) {
   return found ? { x: found.x, z: found.z } : null;
 }
 
+// Convertit une position monde réelle (x,z) en coordonnées canvas de l'aperçu
+// du couloir — utilisé pour dessiner les marqueurs de plantes. Trouve la
+// cellule la plus proche (pas un simple arrondi gx/gz), puis calcule le
+// décalage exact à l'intérieur de cette cellule.
+function worldToMinimapCanvas(worldX, worldZ, cells, scale, offX, offY) {
+  let best = null, bestDist = Infinity;
+  cells.forEach(c => {
+    const d = Math.hypot(c.x - worldX, c.z - worldZ);
+    if (d < bestDist) { bestDist = d; best = c; }
+  });
+  if (!best) return null;
+  return {
+    x: offX + (best.gx + 0.5)*scale + (worldX - best.x) / CELL * scale,
+    y: offY + (best.gz + 0.5)*scale + (worldZ - best.z) / CELL * scale,
+  };
+}
+
 // Dessine le tracé (brouillon en cours d'édition) vu du dessus, sur le canvas
 // donné — carrefours, virages et longueurs y sont visibles immédiatement,
 // avant même de cliquer sur "Appliquer". Réutilisable pour le petit aperçu du
 // panneau ET pour la version agrandie (voir openMinimapZoom plus bas).
-function drawMinimapInto(canvas) {
+function drawMinimapInto(canvas, useApplied) {
   const ctx = canvas.getContext('2d');
   const W = canvas.width, H = canvas.height;
   ctx.clearRect(0, 0, W, H);
 
-  const { cells, visitedGrid, scale, offX, offY } = computeMinimapLayout(canvas);
+  const { cells, visitedGrid, scale, offX, offY } = computeMinimapLayout(canvas, useApplied);
 
   // Sol
   ctx.fillStyle = '#3a332c';
@@ -3062,8 +3271,23 @@ function drawMinimapInto(canvas) {
     });
   });
 
-  // Mur actuellement sélectionné : surligné en bleu, plus épais, par-dessus tout le reste.
-  if (typeof selectedWall !== 'undefined' && selectedWall) {
+  // Petits points verts pour les plantes placées manuellement dans le couloir.
+  ctx.fillStyle = '#7ab45a';
+  ctx.strokeStyle = '#4d7a34';
+  ctx.lineWidth = 1.5;
+  manualPlants.filter(p => p.kind === 'corridor').forEach(p => {
+    const pos = worldToMinimapCanvas(p.x, p.z, cells, scale, offX, offY);
+    if (!pos) return;
+    const r = Math.max(3, scale*0.13);
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, r, 0, Math.PI*2);
+    ctx.fill();
+    ctx.stroke();
+  });
+
+  // Mur actuellement sélectionné : surligné en bleu, plus épais, par-dessus
+  // tout le reste — non pertinent pour la carte du monde 3D (statique).
+  if (!useApplied && typeof selectedWall !== 'undefined' && selectedWall) {
     const { gx, gz, dirK } = selectedWall;
     const d = CARDINAL[dirK];
     ctx.strokeStyle = '#6fb8d1';
@@ -3493,6 +3717,20 @@ function renderTextBlocksLayer() {
   // textes à leur taille RELATIVE réelle (résolution interne / taille affichée).
   const displayScale = wallTextCanvas.getBoundingClientRect().width / wallTextCanvas.width;
   (wallTexts[currentWallTextKey] || []).forEach(block => {
+    if (block.type === 'photo') {
+      const el = document.createElement('div');
+      el.className = 'wallPhotoBlock' + (block.id === selectedTextBlockId ? ' selected' : '');
+      const img = document.createElement('img');
+      img.src = block.url || '';
+      img.draggable = false;
+      el.appendChild(img);
+      el.style.left = (block.x*100) + '%';
+      el.style.top = (block.y*100) + '%';
+      el.style.transform = `translate(-50%,-50%) rotate(${block.rotation||0}deg) scale(${(block.scale||1) * displayScale})`;
+      el.addEventListener('pointerdown', (e) => startDragTextBlock(e, block.id));
+      wallTextBlocksLayer.appendChild(el);
+      return;
+    }
     const el = document.createElement('div');
     el.className = 'wallTextBlock' + (block.id === selectedTextBlockId ? ' selected' : '');
     el.textContent = block.text;
@@ -3547,17 +3785,24 @@ function updateWallTextControls() {
   const block = currentSelectedBlock();
   if (!block) { wallTextBlockControls.classList.remove('show'); return; }
   wallTextBlockControls.classList.add('show');
-  document.getElementById('wallTextContent').value = block.text;
-  document.getElementById('wallTextFontFamily').value = block.fontFamily || "Georgia, 'Times New Roman', serif";
-  document.getElementById('wallTextFontSize').value = block.fontSize || 32;
-  document.getElementById('wallTextFontSizeValue').textContent = block.fontSize || 32;
-  document.getElementById('wallTextBoldBtn').classList.toggle('active', !!block.bold);
-  document.getElementById('wallTextItalicBtn').classList.toggle('active', !!block.italic);
+  const isPhoto = block.type === 'photo';
+  wallTextBlockControls.classList.toggle('mode-text', !isPhoto);
+  wallTextBlockControls.classList.toggle('mode-photo', isPhoto);
+  if (isPhoto) {
+    document.getElementById('wallPhotoUrl').value = block.url || '';
+  } else {
+    document.getElementById('wallTextContent').value = block.text;
+    document.getElementById('wallTextFontFamily').value = block.fontFamily || "Georgia, 'Times New Roman', serif";
+    document.getElementById('wallTextFontSize').value = block.fontSize || 32;
+    document.getElementById('wallTextFontSizeValue').textContent = block.fontSize || 32;
+    document.getElementById('wallTextBoldBtn').classList.toggle('active', !!block.bold);
+    document.getElementById('wallTextItalicBtn').classList.toggle('active', !!block.italic);
+    document.getElementById('wallTextColor').value = block.color || '#e8ddc8';
+  }
   document.getElementById('wallTextRotation').value = block.rotation || 0;
   document.getElementById('wallTextRotationValue').textContent = Math.round(block.rotation || 0);
   document.getElementById('wallTextScale').value = block.scale || 1;
   document.getElementById('wallTextScaleValue').textContent = (block.scale || 1).toFixed(1);
-  document.getElementById('wallTextColor').value = block.color || '#e8ddc8';
 }
 
 document.getElementById('addWallTextBtn').addEventListener('click', () => {
@@ -3565,12 +3810,34 @@ document.getElementById('addWallTextBtn').addEventListener('click', () => {
   if (!wallTexts[currentWallTextKey]) wallTexts[currentWallTextKey] = [];
   const id = 'txt_' + Date.now() + '_' + Math.floor(Math.random()*1000);
   wallTexts[currentWallTextKey].push({
-    id, text:'Nouveau texte', x:0.5, y:0.5, rotation:0, scale:1, color:'#e8ddc8',
+    id, type:'text', text:'Nouveau texte', x:0.5, y:0.5, rotation:0, scale:1, color:'#e8ddc8',
     fontSize:32, fontFamily:"Georgia, 'Times New Roman', serif", bold:false, italic:false,
   });
   selectedTextBlockId = id;
   renderTextBlocksLayer();
   updateWallTextControls();
+});
+
+document.getElementById('addWallPhotoBtn').addEventListener('click', () => {
+  if (!currentWallTextKey) return;
+  if (!wallTexts[currentWallTextKey]) wallTexts[currentWallTextKey] = [];
+  const id = 'photo_' + Date.now() + '_' + Math.floor(Math.random()*1000);
+  wallTexts[currentWallTextKey].push({
+    id, type:'photo', url:'', x:0.5, y:0.5, rotation: Math.round((Math.random()*16-8)), scale:1,
+  });
+  selectedTextBlockId = id;
+  renderTextBlocksLayer();
+  updateWallTextControls();
+});
+
+document.getElementById('wallPhotoUrlApply').addEventListener('click', () => {
+  const block = currentSelectedBlock();
+  if (!block || block.type !== 'photo') return;
+  const url = document.getElementById('wallPhotoUrl').value.trim();
+  if (!url) return;
+  block.url = url;
+  renderTextBlocksLayer();
+  if (currentWallTextKey) ensurePhotoLoaded(url, () => applyWallTextToScene(currentWallTextKey));
 });
 
 document.getElementById('wallTextContent').addEventListener('input', (e) => {
@@ -3694,12 +3961,91 @@ function handleMinimapEditClick(canvas, e) {
   return true;
 }
 
+// ---------- Placement manuel des plantes (couloir + salles) ----------
+function findNearbyManualPlant(worldX, worldZ, kind, roomId) {
+  const THRESHOLD = 0.6; // rayon de détection : reclic à proximité = suppression
+  return manualPlants.find(p => {
+    if (p.kind !== kind) return false;
+    if (kind === 'room' && p.roomId !== roomId) return false;
+    return Math.hypot(p.x - worldX, p.z - worldZ) < THRESHOLD;
+  });
+}
+
+function togglePlantAt(worldX, worldZ, kind, roomId) {
+  const existing = findNearbyManualPlant(worldX, worldZ, kind, roomId);
+  if (existing) {
+    manualPlants = manualPlants.filter(p => p !== existing);
+    geoStatusEl.textContent = 'Plante retirée.';
+  } else {
+    manualPlants.push({
+      id: 'plant_' + Date.now() + '_' + Math.floor(Math.random()*1000),
+      kind, roomId: kind === 'room' ? roomId : undefined,
+      x: worldX, z: worldZ,
+    });
+    geoStatusEl.textContent = 'Plante ajoutée — cliquez à nouveau dessus pour la retirer.';
+  }
+  if (kind === 'corridor') {
+    rebuildCorridor();
+  } else {
+    const room = EXTRA_ROOMS[roomId];
+    if (room) {
+      disposeRoom(roomId);
+      buildExtraRoom(roomId, room.center, room.size, room.palette);
+      rebuildCorridor();
+    }
+  }
+  saveGeometryToSheet();
+  redrawAllMinimaps();
+  if (geoContext.type === 'room') drawRoomMinimap(geoContext.roomId);
+}
+
+// Convertit un clic sur l'aperçu du couloir (petit ou agrandi) en position
+// monde réelle, à l'intérieur de la cellule cliquée (pas forcément son centre).
+function corridorMinimapClickToWorld(canvas, e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width, scaleY = canvas.height / rect.height;
+  const cx = (e.clientX - rect.left) * scaleX;
+  const cy = (e.clientY - rect.top) * scaleY;
+  const { cells, visitedGrid, scale, offX, offY } = computeMinimapLayout(canvas);
+  const gx = Math.floor((cx - offX) / scale);
+  const gz = Math.floor((cy - offY) / scale);
+  if (!visitedGrid.has(gx + ',' + gz)) return null;
+  const cellWorld = findCellWorldPos(cells, gx, gz);
+  if (!cellWorld) return null;
+  const localX = (cx - offX) - gx*scale;
+  const localY = (cy - offY) - gz*scale;
+  return { x: cellWorld.x + (localX/scale - 0.5) * CELL, z: cellWorld.z + (localY/scale - 0.5) * CELL };
+}
+
+const plantModeBtnCorridor = document.getElementById('plantModeBtnCorridor');
+const plantModeBtnRoom = document.getElementById('plantModeBtnRoom');
+function togglePlantMode(fromBtn) {
+  plantPlacementMode = !plantPlacementMode;
+  plantModeBtnCorridor.classList.toggle('active', plantPlacementMode);
+  plantModeBtnRoom.classList.toggle('active', plantPlacementMode);
+  geoStatusEl.textContent = plantPlacementMode
+    ? 'Mode plantes actif : cliquez sur la carte pour en ajouter, recliquez sur une plante pour la retirer.'
+    : 'Mode plantes désactivé.';
+}
+plantModeBtnCorridor.addEventListener('click', () => togglePlantMode());
+plantModeBtnRoom.addEventListener('click', () => togglePlantMode());
+
 geoMinimap.addEventListener('click', (e) => {
+  if (plantPlacementMode && geoContext.type !== 'room') {
+    const pos = corridorMinimapClickToWorld(geoMinimap, e);
+    if (pos) togglePlantAt(pos.x, pos.z, 'corridor');
+    return;
+  }
   const handled = handleMinimapEditClick(geoMinimap, e);
   if (!handled) openMinimapZoom(); // clic hors du tracé dans le petit aperçu : ouvre la vue agrandie
 });
 
 minimapZoomCanvas.addEventListener('click', (e) => {
+  if (plantPlacementMode && geoContext.type !== 'room') {
+    const pos = corridorMinimapClickToWorld(minimapZoomCanvas, e);
+    if (pos) togglePlantAt(pos.x, pos.z, 'corridor');
+    return;
+  }
   handleMinimapEditClick(minimapZoomCanvas, e); // clic hors du tracé ici : ne fait rien de plus
 });
 
@@ -3885,6 +4231,21 @@ function drawRoomMinimap(roomId) {
   ctx.translate(x0+size+14, y0+size/2); ctx.rotate(Math.PI/2);
   ctx.fillText('Est', 0, 0);
   ctx.restore();
+
+  // Petits points verts pour les plantes placées manuellement dans cette salle.
+  if (room) {
+    ctx.fillStyle = '#7ab45a';
+    ctx.strokeStyle = '#4d7a34';
+    ctx.lineWidth = 1.5;
+    manualPlants.filter(p => p.kind === 'room' && p.roomId === roomId).forEach(p => {
+      const px = x0 + size/2 + (p.x - room.center.x) / room.size * size;
+      const py = y0 + size/2 + (p.z - room.center.z) / room.size * size;
+      ctx.beginPath();
+      ctx.arc(px, py, 7, 0, Math.PI*2);
+      ctx.fill();
+      ctx.stroke();
+    });
+  }
 }
 
 roomMinimap.addEventListener('click', (e) => {
@@ -3898,6 +4259,15 @@ roomMinimap.addEventListener('click', (e) => {
   const size = Math.min(W, H) - pad*2;
   const x0 = (W - size) / 2, y0 = (H - size) / 2;
   if (cx < x0-25 || cx > x0+size+25 || cy < y0-25 || cy > y0+size+25) return; // clic hors de la salle
+
+  if (plantPlacementMode) {
+    const room = EXTRA_ROOMS[geoContext.roomId];
+    if (!room || cx < x0 || cx > x0+size || cy < y0 || cy > y0+size) return; // seulement à l'intérieur du carré
+    const worldX = room.center.x + (cx - (x0+size/2)) / size * room.size;
+    const worldZ = room.center.z + (cy - (y0+size/2)) / size * room.size;
+    togglePlantAt(worldX, worldZ, 'room', geoContext.roomId);
+    return;
+  }
 
   const dist = { N: Math.abs(cy-y0), S: Math.abs(cy-(y0+size)), W: Math.abs(cx-x0), E: Math.abs(cx-(x0+size)) };
   const closest = Object.keys(dist).reduce((a,b) => dist[a] < dist[b] ? a : b);
@@ -4545,6 +4915,7 @@ function serializeGeometryState() {
     frameTitles,
     disabledBaseFrames,
     frameUnmuted,
+    manualPlants,
   };
 }
 
@@ -4616,6 +4987,7 @@ function applyGeometryState(state) {
     if (typeof state.ceilingColor === 'string') { ceilingColor = state.ceilingColor; ceilingColorInput.value = ceilingColor; }
     if (typeof state.corridorFloorTint === 'string') { corridorFloorTint = state.corridorFloorTint; corridorFloorTintInput.value = corridorFloorTint; }
     if (typeof state.corridorWallTint === 'string') { corridorWallTint = state.corridorWallTint; corridorWallTintInput.value = corridorWallTint; }
+    if (Array.isArray(state.manualPlants)) manualPlants = state.manualPlants;
 
     // Reflète l'état restauré dans les champs éditables du panneau, pour
     // qu'un "Appliquer" sans rien retoucher ne l'écrase pas.
@@ -4639,6 +5011,16 @@ function applyGeometryState(state) {
         }
       });
     }
+
+    // Salles déjà construites AVANT que manualPlants n'arrive (room2 dès le
+    // tout premier chargement, notamment) : leurs plantes n'apparaissent pas
+    // automatiquement tant qu'on ne les reconstruit pas — contrairement au
+    // couloir et aux salles de poche, déjà à jour via rebuildCorridor() ci-dessus.
+    const roomIdsWithPlants = new Set(manualPlants.filter(p => p.kind === 'room').map(p => p.roomId));
+    roomIdsWithPlants.forEach(roomId => {
+      const room = EXTRA_ROOMS[roomId];
+      if (room) { disposeRoom(roomId); buildExtraRoom(roomId, room.center, room.size, room.palette); }
+    });
 
     // Textures personnalisées depuis une URL (partageables, contrairement à
     // un fichier local) : appliquées après les palettes, pour ne pas être
