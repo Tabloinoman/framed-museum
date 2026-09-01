@@ -464,11 +464,11 @@
   }
   #geoPanel .swatchBtn:hover { transform:scale(1.08); }
   #geoPanel .swatchBtn.active { border-color:#cba135; box-shadow:0 0 0 1px #cba135; }
-  #geoPanel .fileLabel {
+  #geoPanel .fileLabel, #wallTextToolbar .fileLabel {
     flex:1; font-size:.68rem; color:#a89a82; text-transform:uppercase; letter-spacing:.05em;
     border:1px dashed #3a332c; border-radius:4px; padding:8px 6px; text-align:center; cursor:pointer;
   }
-  #geoPanel .fileLabel:hover { border-color:#cba135; color:#e8ddc8; }
+  #geoPanel .fileLabel:hover, #wallTextToolbar .fileLabel:hover { border-color:#cba135; color:#e8ddc8; }
   #geoPanel .fileLabel input[type=file] { display:block; margin-top:4px; font-size:.65rem; color:#7d7364; width:100%; }
   #closeGeo { align-self:flex-end; background:none; color:#a89a82; font-size:.8rem; padding:4px 0; }
   #closeGeo:hover { color:#e8ddc8; background:none; }
@@ -509,7 +509,7 @@
     <span class="key">Échap</span> pour libérer le curseur.</p>
     <p class="small" id="blockerSmallHint">Visez un cadre et cliquez pour l'agrandir avec le son. Le bouton ⚙ (en haut à droite) reste toujours accessible.</p>
   </div>
-  <div id="versionTag">V1.6.2</div>
+  <div id="versionTag">V1.7.0</div>
 </div>
 
 <div id="crosshair"></div>
@@ -601,7 +601,13 @@
         <input type="color" id="wallTextColor" value="#e8ddc8">
       </div>
       <div id="wallPhotoOnlyControls">
-        <label>URL de la photo</label>
+        <label>Envoyer une photo depuis cet appareil</label>
+        <label class="fileLabel" style="display:block; text-align:center;">
+          Choisir une photo…
+          <input type="file" id="wallPhotoDeviceFile" accept="image/*" style="display:none;">
+        </label>
+        <p class="urlHint" id="wallPhotoUploadStatus" style="margin:2px 0 8px;"></p>
+        <label>Ou coller un lien d'image</label>
         <input type="text" id="wallPhotoUrl" placeholder="https://exemple.com/photo.jpg">
         <div class="row">
           <button class="secondary" id="wallPhotoUrlApply">Charger cette photo</button>
@@ -926,6 +932,12 @@ const SHEET_FORM_ENTRIES = {
   preview_link: 'entry.279958929',
 };
 const SHEET_READ_CSV_URL = 'https://docs.google.com/spreadsheets/d/1X0qK4fVqFGqI79vuUIqdQWEwysvkCwt-rimIZacrnz0/gviz/tq?tqx=out:csv&gid=1012373402';
+
+// Envoi direct de photos par les visiteurs (mur de texte → punaise), sans
+// clé secrète : un "unsigned upload preset" Cloudinary, sans droit d'accès
+// au reste du compte — voir la conversation avec l'utilisateur à ce sujet.
+const CLOUDINARY_CLOUD_NAME = 'oj7vcial';
+const CLOUDINARY_UPLOAD_PRESET = 'galerie_visiteurs';
 
 const FRAME_CONFIGS = [
   { id: 'a', label: 'Cadre 1 — droite, entrée',   side: 'right', z: 16  },
@@ -4424,6 +4436,52 @@ document.getElementById('addWallPhotoBtn').addEventListener('click', () => {
   selectedTextBlockId = id;
   renderTextBlocksLayer();
   updateWallTextControls();
+});
+
+// Envoie une photo directement depuis l'appareil du visiteur vers Cloudinary
+// (préréglage non signé, sans clé secrète exposée) — voir la conversation
+// avec l'utilisateur pour le contexte de sécurité derrière ce choix.
+function uploadPhotoToCloudinary(file, onSuccess, onError) {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+  fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, { method: 'POST', body: formData })
+    .then(res => res.json())
+    .then(data => {
+      if (data.secure_url) onSuccess(data.secure_url);
+      else onError((data.error && data.error.message) || 'Réponse inattendue de Cloudinary.');
+    })
+    .catch(err => onError(err.message || 'Échec de l\'envoi.'));
+}
+
+document.getElementById('wallPhotoDeviceFile').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const block = currentSelectedBlock();
+  const statusEl = document.getElementById('wallPhotoUploadStatus');
+  if (!block || block.type !== 'photo') {
+    statusEl.textContent = 'Sélectionnez d\'abord un bloc photo (ou ajoutez-en un).';
+    e.target.value = '';
+    return;
+  }
+  statusEl.textContent = 'Envoi en cours…';
+  // Capturé maintenant, jamais réinitialisé même si l'éditeur se ferme avant
+  // la fin de l'envoi (asynchrone) — même précaution que pour le lien collé.
+  const wallKeyAtUpload = currentWallTextKey;
+  uploadPhotoToCloudinary(file,
+    (url) => {
+      block.url = url;
+      document.getElementById('wallPhotoUrl').value = url;
+      renderTextBlocksLayer();
+      statusEl.textContent = 'Photo envoyée !';
+      ensurePhotoLoaded(url,
+        () => { if (wallKeyAtUpload) buildPhotoObjectsForWall(wallKeyAtUpload); statusEl.textContent = 'Photo appliquée au mur.'; },
+        () => { statusEl.textContent = 'Photo envoyée, mais échec de son application au mur 3D.'; }
+      );
+    },
+    (msg) => { statusEl.textContent = 'Échec de l\'envoi : ' + msg; }
+  );
+  e.target.value = ''; // permet de resélectionner le même fichier plus tard si besoin
 });
 
 document.getElementById('wallPhotoUrlApply').addEventListener('click', () => {
