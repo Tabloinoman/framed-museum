@@ -242,10 +242,10 @@
   .wallPhotoBlock img { display:block; width:160px; height:120px; object-fit:cover; }
   .wallPhotoBlock.selected { outline:1.5px dashed rgba(203,161,53,.85); outline-offset:4px; }
   .wallPhotoBlock::before {
-    content:''; position:absolute; top:-7px; left:50%; margin-left:-7px;
-    width:14px; height:14px; border-radius:50%;
-    background:radial-gradient(circle at 35% 30%, #e8776a, #a8362a);
-    box-shadow:0 2px 4px rgba(0,0,0,.6);
+    content:''; position:absolute; top:-4px; left:50%; margin-left:-4px;
+    width:8px; height:8px; border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, #b8b0a0, #6b6255);
+    box-shadow:0 1px 3px rgba(0,0,0,.6);
   }
   #wallPhotoOnlyControls, #wallTextOnlyControls { display:none; }
   #wallTextBlockControls.mode-text #wallTextOnlyControls { display:flex; flex-direction:column; gap:6px; }
@@ -675,6 +675,7 @@
     <div class="field">
       <p class="urlHint" id="wallSelectionStatus">Aucun mur sélectionné.</p>
       <button class="secondary" id="addDoorAtWall" disabled>+ Porte ici</button>
+      <button class="secondary" id="toggleInternalWallBtn" style="display:none; margin-top:6px;">Retirer ce mur</button>
     </div>
 
     <div id="geoSegList"></div>
@@ -1062,12 +1063,12 @@ function renderWallCanvas(wallKey, canvas) {
       ctx.fillRect(-w/2 - 6, -h/2 - 6, w + 12, h + 22);
       ctx.shadowBlur = 0;
       ctx.drawImage(img, -w/2, -h/2, w, h);
-      // Punaise.
-      const pinY = -h/2 - 14;
-      const grad = ctx.createRadialGradient(-2, pinY-2, 1, 0, pinY, 7);
-      grad.addColorStop(0, '#e8776a'); grad.addColorStop(1, '#a8362a');
+      // Punaise, discrète.
+      const pinY = -h/2 - 8;
+      const grad = ctx.createRadialGradient(-1, pinY-1, 0.5, 0, pinY, 3.5);
+      grad.addColorStop(0, '#b8b0a0'); grad.addColorStop(1, '#6b6255');
       ctx.fillStyle = grad;
-      ctx.beginPath(); ctx.arc(0, pinY, 6, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(0, pinY, 3, 0, Math.PI*2); ctx.fill();
       ctx.restore();
       return;
     }
@@ -1094,7 +1095,7 @@ function renderWallCanvas(wallKey, canvas) {
 // par URL) — plafonnées à une résolution modeste, ce sont de petites photos
 // décoratives, pas besoin de la pleine résolution d'origine.
 const photoImageCache = {};
-function ensurePhotoLoaded(url, onLoaded) {
+function ensurePhotoLoaded(url, onLoaded, onError) {
   let entry = photoImageCache[url];
   if (entry) {
     if (entry.loaded) { if (onLoaded) onLoaded(); }
@@ -1111,7 +1112,14 @@ function ensurePhotoLoaded(url, onLoaded) {
     entry.waiters.forEach(fn => fn());
     entry.waiters = [];
   };
-  img.onerror = () => { delete photoImageCache[url]; };
+  img.onerror = () => {
+    // Cause la plus fréquente : le site qui héberge l'image n'autorise pas
+    // le partage cross-origin (CORS) — l'image peut très bien s'afficher
+    // comme un <img> normal (l'aperçu de l'éditeur, par exemple), mais ne
+    // peut pas être utilisée pour fabriquer une texture 3D sans CORS.
+    delete photoImageCache[url];
+    if (onError) onError();
+  };
   img.src = url;
   return entry;
 }
@@ -1761,7 +1769,7 @@ function buildGalleryMap() {
   tex.magFilter = THREE.NearestFilter;
   tex.minFilter = THREE.NearestFilter;
 
-  const mapW = CELL * 0.82, mapH = mapW * (canvas.height / canvas.width);
+  const mapW = CELL * 0.41, mapH = mapW * (canvas.height / canvas.width);
   const rotY = wallRotationForInwardNormal(1, 0); // mur Ouest, normale vers l'intérieur (+X)
   const posX = -CELL/2 + 0.08, posZ = CORRIDOR_START_Z;
 
@@ -3548,6 +3556,7 @@ document.getElementById('framePreviewClear').addEventListener('click', () => {
 });
 
 function updateWallSelectionUI() {
+  const toggleBtn = document.getElementById('toggleInternalWallBtn');
   if (selectedWall) {
     const dir = CARDINAL[selectedWall.dirK];
     const wallX = selectedWall.worldX + dir.x*CELL/2;
@@ -3557,17 +3566,36 @@ function updateWallSelectionUI() {
     if (selectedWall.internal) {
       wallSelectionStatusEl.textContent = `Mur interne sélectionné (côté ${selectedWall.dirK}, entre deux cases du tracé) — vous pouvez y gérer un cadre, même sans mur plein.`;
       addDoorAtWallBtn.disabled = true; // pas de porte/branche sur un mur interne, seulement un cadre
+      // Bouton fiable pour poser/retirer ce mur forcé (rouge sur la carte),
+      // sans avoir à recliquer précisément sur le même pixel de la carte.
+      const key = edgeKey(selectedWall.gx, selectedWall.gz, selectedWall.dirK);
+      const hasWall = manualEdges[key] === 'wall';
+      toggleBtn.style.display = 'block';
+      toggleBtn.textContent = hasWall ? 'Retirer ce mur' : 'Poser un mur ici';
     } else {
       wallSelectionStatusEl.textContent = `Mur sélectionné (côté ${selectedWall.dirK}) — ajoutez un couloir/virage à partir d'ici, une porte, ou un cadre.`;
       addDoorAtWallBtn.disabled = false;
+      toggleBtn.style.display = 'none';
     }
     setFrameEditContext(frameId, wallX, wallZ, inwardDir, `Cadre — mur ${selectedWall.dirK}`);
   } else {
     wallSelectionStatusEl.textContent = 'Aucun mur sélectionné.';
     addDoorAtWallBtn.disabled = true;
+    toggleBtn.style.display = 'none';
     clearFrameEditContext();
   }
 }
+document.getElementById('toggleInternalWallBtn').addEventListener('click', () => {
+  if (!selectedWall || !selectedWall.internal) return;
+  const key = edgeKey(selectedWall.gx, selectedWall.gz, selectedWall.dirK);
+  manualEdges[key] = manualEdges[key] === 'wall' ? undefined : 'wall';
+  if (manualEdges[key] === undefined) delete manualEdges[key];
+  updateWallSelectionUI();
+  drawMinimap();
+  geoStatusEl.textContent = manualEdges[key] === 'wall'
+    ? 'Mur posé — cliquez sur "Appliquer" pour le construire.'
+    : 'Mur retiré — cliquez sur "Appliquer" pour valider.';
+});
 
 // Vue agrandie de l'aperçu du tracé, en superposition à côté du panneau
 // (qui reste accessible) — pratique pour voir l'ensemble du plan d'un coup
@@ -3837,7 +3865,13 @@ document.getElementById('wallPhotoUrlApply').addEventListener('click', () => {
   if (!url) return;
   block.url = url;
   renderTextBlocksLayer();
-  if (currentWallTextKey) ensurePhotoLoaded(url, () => applyWallTextToScene(currentWallTextKey));
+  geoStatusEl.textContent = 'Chargement de la photo…';
+  if (currentWallTextKey) {
+    ensurePhotoLoaded(url,
+      () => { applyWallTextToScene(currentWallTextKey); geoStatusEl.textContent = 'Photo appliquée au mur.'; },
+      () => { geoStatusEl.textContent = 'Échec du chargement de la photo pour le mur 3D (lien invalide, ou le site n\'autorise pas le partage cross-origin/CORS) — elle reste visible ici dans l\'éditeur, mais n\'apparaîtra pas sur le vrai mur tant que ce n\'est pas résolu.'; }
+    );
+  }
 });
 
 document.getElementById('wallTextContent').addEventListener('input', (e) => {
