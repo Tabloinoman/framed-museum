@@ -3866,9 +3866,13 @@ document.getElementById('wallPhotoUrlApply').addEventListener('click', () => {
   block.url = url;
   renderTextBlocksLayer();
   geoStatusEl.textContent = 'Chargement de la photo…';
-  if (currentWallTextKey) {
+  // Capturé maintenant, dans une constante à soi — jamais réinitialisé même
+  // si l'éditeur se ferme (et remet currentWallTextKey à null) avant que le
+  // chargement de l'image, asynchrone, n'ait eu le temps d'aboutir.
+  const wallKeyAtClick = currentWallTextKey;
+  if (wallKeyAtClick) {
     ensurePhotoLoaded(url,
-      () => { applyWallTextToScene(currentWallTextKey); geoStatusEl.textContent = 'Photo appliquée au mur.'; },
+      () => { applyWallTextToScene(wallKeyAtClick); geoStatusEl.textContent = 'Photo appliquée au mur.'; },
       () => { geoStatusEl.textContent = 'Échec du chargement de la photo pour le mur 3D (lien invalide, ou le site n\'autorise pas le partage cross-origin/CORS) — elle reste visible ici dans l\'éditeur, mais n\'apparaîtra pas sur le vrai mur tant que ce n\'est pas résolu.'; }
     );
   }
