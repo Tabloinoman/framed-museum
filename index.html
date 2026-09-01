@@ -215,6 +215,28 @@
   }
   #minimapZoomOverlay .zoomClose:hover { background:rgba(203,161,53,.22); }
 
+  #galleryMapZoomOverlay {
+    position:fixed; inset:0; z-index:30; display:flex; align-items:center; justify-content:center;
+    background:rgba(5,4,3,.88); opacity:0; pointer-events:none;
+    transition:opacity .2s ease;
+  }
+  #galleryMapZoomOverlay.open { opacity:1; pointer-events:auto; }
+  #galleryMapZoomOverlay .zoomInner {
+    position:relative; border:2px solid #cba135; background:#0a0908;
+    box-shadow:0 0 50px rgba(203,161,53,.35), 0 20px 60px rgba(0,0,0,.6);
+    padding:14px;
+  }
+  #galleryMapZoomCanvas {
+    display:block; width:min(85vw, 900px); height:min(78vh, 675px);
+    image-rendering: pixelated; background:#0a0908;
+  }
+  #galleryMapZoomOverlay .zoomClose {
+    position:absolute; top:-14px; right:-14px;
+    background:#141110; border:1px solid rgba(203,161,53,.5); color:#e8ddc8;
+    width:30px; height:30px; border-radius:50%; cursor:pointer; font-size:.85rem;
+  }
+  #galleryMapZoomOverlay .zoomClose:hover { background:rgba(203,161,53,.22); }
+
   #wallTextOverlay {
     position:fixed; inset:0; z-index:32;
     display:flex; flex-direction:row; align-items:stretch; justify-content:center;
@@ -460,7 +482,7 @@
     <span class="key">Échap</span> pour libérer le curseur.</p>
     <p class="small" id="blockerSmallHint">Visez un cadre et cliquez pour l'agrandir avec le son. Le bouton ⚙ (en haut à droite) reste toujours accessible.</p>
   </div>
-  <div id="versionTag">V1.3.1</div>
+  <div id="versionTag">V1.4.0</div>
 </div>
 
 <div id="crosshair"></div>
@@ -492,6 +514,13 @@
   <div class="zoomInner">
     <canvas id="minimapZoomCanvas" width="1000" height="700"></canvas>
     <button class="zoomClose" id="closeMinimapZoomBtn" title="Fermer">✕</button>
+  </div>
+</div>
+
+<div id="galleryMapZoomOverlay">
+  <div class="zoomInner">
+    <canvas id="galleryMapZoomCanvas" width="1000" height="750"></canvas>
+    <button class="zoomClose" id="closeGalleryMapZoomBtn" title="Fermer">✕</button>
   </div>
 </div>
 
@@ -1912,7 +1941,7 @@ function drawGalleryMapPaperStyle(canvas) {
   // une ouverture/un carrefour, et une petite coupure perpendiculaire pour
   // une porte (comme le symbole classique de porte entrouverte).
   ctx.strokeStyle = 'rgba(35,30,22,.75)';
-  ctx.lineWidth = Math.max(1, scale*0.025);
+  ctx.lineWidth = Math.max(2, scale*0.05);
   ctx.lineCap = 'butt';
   cells.forEach(({gx, gz}) => {
     dirs.forEach(d => {
@@ -1993,8 +2022,10 @@ function drawGalleryMapPaperStyle(canvas) {
   ctx.font = `${Math.round(H*0.045)}px Georgia, serif`;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
-  ctx.fillText('LA GALERIE', W*0.04, H*0.03);
+  ctx.fillText('La Galerie', W*0.04, H*0.03);
 }
+
+let galleryMapCanvas = null; // conservé pour pouvoir l'afficher en grand au clic
 
 function buildGalleryMap() {
   if (galleryMapGroup) {
@@ -2012,6 +2043,7 @@ function buildGalleryMap() {
   const canvas = document.createElement('canvas');
   canvas.width = 640; canvas.height = 480;
   drawGalleryMapPaperStyle(canvas);
+  galleryMapCanvas = canvas;
   const tex = new THREE.CanvasTexture(canvas);
   tex.magFilter = THREE.NearestFilter;
   tex.minFilter = THREE.NearestFilter;
@@ -2037,6 +2069,7 @@ function buildGalleryMap() {
   map.position.set(posX, h/2, posZ);
   map.rotation.y = rotY;
   map.receiveShadow = true;
+  map.userData.isGalleryMap = true; // cliquable : ouvre une vue agrandie
   galleryMapGroup.add(map);
 
   scene.add(galleryMapGroup);
@@ -2765,6 +2798,7 @@ interactBtn.addEventListener('click', () => {
   if (!hit) return;
   if (hit.type === 'frame') openVideoModal(hit.id);
   else if (hit.type === 'door') goThroughDoor(hit.target);
+  else if (hit.type === 'gallerymap') openGalleryMapZoom();
   else if (hit.type === 'wall') openWallTextEditor(hit.key);
 });
 
@@ -2860,12 +2894,14 @@ function raycastInteractable() {
   raycaster.setFromCamera({ x: 0, y: 0 }, camera);
   // Recalculé à chaque appel (et non figé une fois pour toutes) pour que les
   // cadres créés dynamiquement sur les tronçons ajoutés restent cliquables.
-  const targets = [...Object.values(frames).map(f => f.screen), ...doorMeshes, ...wallMeshesForClick];
+  const mapTargets = galleryMapGroup ? galleryMapGroup.children.filter(o => o.userData.isGalleryMap) : [];
+  const targets = [...Object.values(frames).map(f => f.screen), ...doorMeshes, ...wallMeshesForClick, ...mapTargets];
   const hits = raycaster.intersectObjects(targets);
   if (hits.length && hits[0].distance < CLICK_RANGE) {
     const obj = hits[0].object;
     if (obj.userData.isDoor) return { type: 'door', target: obj.userData.doorTarget };
     if (obj.userData.frameId) return { type: 'frame', id: obj.userData.frameId };
+    if (obj.userData.isGalleryMap) return { type: 'gallerymap' };
     if (obj.userData.wallKey) return { type: 'wall', key: obj.userData.wallKey };
   }
   return null;
@@ -2991,6 +3027,7 @@ renderer.domElement.addEventListener('click', () => {
   if (!hit) return;
   if (hit.type === 'frame') openVideoModal(hit.id);
   else if (hit.type === 'door') goThroughDoor(hit.target);
+  else if (hit.type === 'gallerymap') openGalleryMapZoom();
   else if (hit.type === 'wall') openWallTextEditor(hit.key);
 });
 
@@ -3155,7 +3192,8 @@ videoModal.addEventListener('click', (e) => {
 });
 document.addEventListener('keydown', (e) => {
   if (e.code !== 'Escape') return;
-  if (modalOpen) closeVideoModal();
+  if (galleryMapZoomOverlay.classList.contains('open')) closeGalleryMapZoom();
+  else if (modalOpen) closeVideoModal();
   else if (minimapZoomOverlay.classList.contains('open')) closeMinimapZoom();
   else if (wallTextOverlay.classList.contains('open')) closeWallTextEditor();
   else if (adminOpen) closeAdminPanel();
@@ -3867,6 +3905,36 @@ function redrawAllMinimaps() { drawMinimap(); } // conservé pour compatibilité
 document.getElementById('closeMinimapZoomBtn').addEventListener('click', closeMinimapZoom);
 minimapZoomOverlay.addEventListener('click', (e) => {
   if (e.target === minimapZoomOverlay) closeMinimapZoom(); // clic sur le fond assombri
+});
+
+// Vue agrandie de la carte du couloir (clic dessus en jeu) — même mécanique
+// que la vue agrandie du tracé dans l'éditeur, mais plein écran (pas besoin
+// de laisser un panneau visible à côté, ici) et met le jeu en pause pendant
+// qu'elle est ouverte.
+const galleryMapZoomOverlay = document.getElementById('galleryMapZoomOverlay');
+const galleryMapZoomCanvas = document.getElementById('galleryMapZoomCanvas');
+function openGalleryMapZoom() {
+  if (!galleryMapCanvas) return;
+  modalOpen = true;
+  mobileActive = false;
+  if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
+  onGameDeactivated();
+  const zctx = galleryMapZoomCanvas.getContext('2d');
+  zctx.clearRect(0, 0, galleryMapZoomCanvas.width, galleryMapZoomCanvas.height);
+  zctx.drawImage(galleryMapCanvas, 0, 0, galleryMapZoomCanvas.width, galleryMapZoomCanvas.height);
+  galleryMapZoomOverlay.classList.add('open');
+}
+function closeGalleryMapZoom() {
+  galleryMapZoomOverlay.classList.remove('open');
+  modalOpen = false;
+  unlockAudio();
+  requestGalleryFullscreen();
+  if (isTouchDevice) { mobileActive = true; onGameActivated(); }
+  else renderer.domElement.requestPointerLock();
+}
+document.getElementById('closeGalleryMapZoomBtn').addEventListener('click', closeGalleryMapZoom);
+galleryMapZoomOverlay.addEventListener('click', (e) => {
+  if (e.target === galleryMapZoomOverlay) closeGalleryMapZoom();
 });
 
 // ============================================================
