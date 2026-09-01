@@ -183,6 +183,7 @@
   }
   #videoModal video { display:block; width:100%; max-height:78vh; background:#000; }
   #videoModal iframe { display:none; width:100%; aspect-ratio:16/9; max-height:78vh; background:#000; }
+  #videoModal img#modalImage { display:none; width:100%; max-height:78vh; object-fit:contain; background:#000; }
   #videoModal .modalCaption {
     display:flex; align-items:center; justify-content:space-between;
     background:#141110; color:#cba135; padding:10px 16px; font-size:.85rem; letter-spacing:.05em;
@@ -250,10 +251,18 @@
   .wallTextCanvasWrap {
     position:relative; border:2px solid #cba135; background:#0a0908;
     box-shadow:0 0 50px rgba(203,161,53,.35), 0 20px 60px rgba(0,0,0,.6);
-    width:100%; height:100%; max-width:900px; max-height:640px;
+    max-width:min(900px, 90vw); max-height:min(70vh, 640px);
+    overflow-x:auto; overflow-y:hidden;
+  }
+  /* Hauteur fixe et confortable, quelle que soit la forme réelle du mur (les
+     murs de salle, très larges et bas, donneraient sinon une bande écrasée
+     et illisible) — la largeur suit naturellement le ratio réel du mur ; si
+     elle dépasse la largeur visible, on peut la faire défiler horizontalement. */
+  .wallTextCanvasScroll {
+    position:relative; display:inline-block; height:min(60vh, 500px); vertical-align:top;
   }
   #wallTextCanvas {
-    display:block; width:100%; height:100%; image-rendering:pixelated; background:#241f1a; cursor:default;
+    display:block; height:100%; width:auto; image-rendering:pixelated; background:#241f1a; cursor:default;
   }
   #wallTextBlocksLayer { position:absolute; inset:0; overflow:hidden; }
   .wallTextBlock {
@@ -482,7 +491,7 @@
     <span class="key">Échap</span> pour libérer le curseur.</p>
     <p class="small" id="blockerSmallHint">Visez un cadre et cliquez pour l'agrandir avec le son. Le bouton ⚙ (en haut à droite) reste toujours accessible.</p>
   </div>
-  <div id="versionTag">V1.4.1</div>
+  <div id="versionTag">V1.5.0</div>
 </div>
 
 <div id="crosshair"></div>
@@ -503,6 +512,7 @@
   <div class="modalInner">
     <video id="modalVideo" playsinline controls preload="auto"></video>
     <iframe id="modalIframe" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen frameborder="0"></iframe>
+    <img id="modalImage" alt="">
     <div class="modalCaption">
       <span id="modalTitle">Lecture</span>
       <button id="closeModalBtn">Fermer ✕</button>
@@ -527,8 +537,10 @@
 <div id="wallTextOverlay">
   <div class="wallTextInner">
     <div class="wallTextCanvasWrap">
-      <canvas id="wallTextCanvas"></canvas>
-      <div id="wallTextBlocksLayer"></div>
+      <div class="wallTextCanvasScroll">
+        <canvas id="wallTextCanvas"></canvas>
+        <div id="wallTextBlocksLayer"></div>
+      </div>
       <button class="zoomClose" id="closeWallTextBtn" title="Fermer">✕</button>
     </div>
   </div>
@@ -1958,7 +1970,11 @@ function drawGalleryMapPaperStyle(canvas) {
       const neighborVisited = visitedGrid.has((gx+d.x) + ',' + (gz+d.z));
       const override = manualEdges[edgeKey(gx, gz, d.k)];
       const isDoor = edgeHasDoor({x,z}, gx, gz, d.k);
-      const isWall = neighborVisited ? override === 'wall' : !isDoor;
+      // Le trait du mur reste continu même à l'emplacement d'une porte (la
+      // barre bleue vient ensuite se poser par-dessus) — sinon la porte crée
+      // une vraie coupure dans le contour, ce qui n'a pas l'air voulu sur un
+      // plan d'architecte.
+      const isWall = neighborVisited ? (override === 'wall' || isDoor) : true;
       if (!isWall) return;
       let x1, y1, x2, y2;
       if (d.x === 0) {
@@ -3051,6 +3067,7 @@ document.addEventListener('pointerlockchange', () => {
 const videoModal = document.getElementById('videoModal');
 const modalVideo = document.getElementById('modalVideo');
 const modalIframe = document.getElementById('modalIframe');
+const modalImage = document.getElementById('modalImage');
 const modalTitle = document.getElementById('modalTitle');
 const closeModalBtn = document.getElementById('closeModalBtn');
 modalVideo.loop = true; // le lecteur interne boucle, sans effet VHS (c'est un <video> DOM normal)
@@ -3135,6 +3152,13 @@ modalVideo.addEventListener('error', () => {
 function openVideoModal(frameId) {
   const frame = frames[frameId];
   if (!frame) return;
+  // Vrai si, À L'ORIGINE (avant tout filet de sécurité ci-dessous), aucun
+  // lien de clic n'avait été configuré pour ce cadre — sert à savoir si on
+  // doit afficher l'aperçu à la place, et si le titre par défaut doit être
+  // masqué (peu importe que le filet de sécurité promeuve ensuite l'aperçu
+  // en lien de clic ou non, le résultat pour l'utilisateur doit être cohérent).
+  const hadNoClickLinkOriginally = !frame.currentSrc || (frame.kind === 'embed' && !frame.embedUrl);
+
   // Filet de sécurité ultime, vérifié à l'instant même du clic : si le lien
   // au clic est vide (ou le cadre resté coincé en mode "iframe" d'un ancien
   // test) alors qu'un aperçu vidéo existe, on le corrige ici avant d'ouvrir —
@@ -3143,10 +3167,18 @@ function openVideoModal(frameId) {
   // ce soit : sinon, sur un réseau lent, l'aperçu par défaut (fleur) — qui se
   // charge souvent plus vite que la requête vers le Sheet — se retrouverait
   // enregistré ici en dur avant même que le vrai lien n'ait pu s'appliquer.
-  if (sheetConfigLoaded && (!frame.currentSrc || frame.kind === 'embed' && !frame.embedUrl) && frame.previewUrl && isLikelyVideoUrl(frame.previewUrl)) {
+  if (sheetConfigLoaded && hadNoClickLinkOriginally && frame.previewUrl && isLikelyVideoUrl(frame.previewUrl)) {
     setClickVideoQuietly(frame, frame.previewUrl);
   }
-  if (frame.kind === 'video' && !frame.currentSrc) return; // cadre pas encore configuré : rien à ouvrir
+
+  // Si toujours aucun lien de clic (ex. l'aperçu est une image, pas une
+  // vidéo, donc le filet de sécurité ci-dessus ne s'applique pas) mais qu'un
+  // aperçu existe, on l'affiche quand même plutôt que de ne rien faire.
+  let contentUrl = frame.currentSrc;
+  const usingPreviewFallback = hadNoClickLinkOriginally && !!frame.previewUrl;
+  if (frame.kind === 'video' && !contentUrl && frame.previewUrl) contentUrl = frame.previewUrl;
+  if (frame.kind === 'video' && !contentUrl) return; // vraiment rien à montrer
+
   modalOpen = true;
   mobileActive = false;
   if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
@@ -3156,22 +3188,36 @@ function openVideoModal(frameId) {
   // donc cet évènement ne se déclenche jamais : il faut le faire ici, sinon
   // le son de fond continue pendant la lecture plein écran.
   onGameDeactivated();
-  modalTitle.textContent = frameDisplayLabel(frame);
+  // Pas de titre par défaut quand on se contente d'afficher l'aperçu faute de
+  // lien de clic — sauf si un titre personnalisé a été renseigné exprès.
+  const customTitle = frameTitles[frame.config.id];
+  modalTitle.textContent = (usingPreviewFallback && !customTitle) ? '' : frameDisplayLabel(frame);
 
   if (frame.kind === 'embed') {
     // Lien YouTube / Instagram / Drive : on utilise leur vrai player officiel dans un iframe.
     modalVideo.pause();
     modalVideo.style.display = 'none';
+    modalImage.style.display = 'none';
     modalIframe.style.display = 'block';
     modalIframe.src = frame.embedUrl;
+    videoModal.classList.add('open');
+  } else if (usingPreviewFallback && !isLikelyVideoUrl(contentUrl)) {
+    // Aperçu de secours qui n'est pas une vidéo (une image) : affiché tel quel.
+    modalVideo.pause();
+    modalVideo.style.display = 'none';
+    modalIframe.style.display = 'none';
+    modalIframe.src = '';
+    modalImage.style.display = 'block';
+    modalImage.src = contentUrl;
     videoModal.classList.add('open');
   } else {
     modalIframe.style.display = 'none';
     modalIframe.src = ''; // coupe toute lecture résiduelle
+    modalImage.style.display = 'none';
     modalVideo.style.display = 'block';
     modalVideo.loop = true;
     modalVideo.pause();
-    modalVideo.src = frame.currentSrc;
+    modalVideo.src = contentUrl;
     modalVideo.load(); // réinitialise proprement le buffer, même si c'est la même source qu'avant
     modalVideo.muted = false;
     modalVideo.currentTime = 0; // toujours repartir du début, évite les soucis de boucle
@@ -3185,6 +3231,7 @@ function closeVideoModal() {
   stopStallWatchdog();
   modalVideo.pause();
   modalIframe.src = ''; // coupe la lecture de l'iframe en fermant
+  modalImage.src = '';
   videoModal.classList.remove('open');
   modalOpen = false;
   blocker.classList.add('hidden');
