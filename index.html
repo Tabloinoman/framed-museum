@@ -38,15 +38,15 @@
   /* Overlay façon tube cathodique : toujours actif, plus fort en marchant */
   #vhsOverlay {
     position:fixed; inset:0; z-index:8; pointer-events:none;
-    opacity: calc(.62 * var(--vhs-intensity));
+    opacity: calc(.55 * var(--vhs-intensity));
     background:
       repeating-linear-gradient(to bottom, rgba(0,0,0,.38) 0px, rgba(0,0,0,.38) 1px, transparent 2px, transparent 3px),
-      radial-gradient(ellipse at center, transparent 35%, rgb(0 0 0 / calc(.8 * var(--vhs-intensity))) 100%);
+      radial-gradient(ellipse at center, transparent 35%, rgb(0 0 0 / calc(.65 * var(--vhs-intensity))) 100%);
     mix-blend-mode: multiply;
-    box-shadow: inset 0 0 12vw 3vw rgb(0 0 0 / calc(.7 * var(--vhs-intensity)));
+    box-shadow: inset 0 0 12vw 3vw rgb(0 0 0 / calc(.55 * var(--vhs-intensity)));
     animation: vhsRoll 6s linear infinite, vhsFlicker 2.6s ease-in-out infinite;
   }
-  #vhsOverlay.active { opacity: calc(.8 * var(--vhs-intensity)); animation-duration: 3.2s, 1.3s; }
+  #vhsOverlay.active { opacity: calc(.62 * var(--vhs-intensity)); animation-duration: 3.2s, 1.3s; }
   #vhsOverlay::before {
     content:''; position:absolute; inset:0;
     background: linear-gradient(90deg, rgba(255,0,60,.1), transparent 40%, transparent 60%, rgba(0,255,255,.1));
@@ -70,10 +70,10 @@
   @keyframes scanBarMove { 0% { top:-90px; } 100% { top:100%; } }
   @keyframes vhsRoll { 0% { background-position:0 0, 0 0; } 100% { background-position:0 220px, 0 0; } }
   @keyframes vhsFlicker {
-    0%, 100% { opacity: calc(.62 * var(--vhs-intensity)); }
+    0%, 100% { opacity: calc(.55 * var(--vhs-intensity)); }
     45% { opacity: calc(.5 * var(--vhs-intensity)); }
-    50% { opacity: calc(.72 * var(--vhs-intensity)); }
-    55% { opacity: calc(.58 * var(--vhs-intensity)); }
+    50% { opacity: calc(.58 * var(--vhs-intensity)); }
+    55% { opacity: calc(.52 * var(--vhs-intensity)); }
   }
   @keyframes vhsGrain {
     0% { transform:translate(0,0); } 33% { transform:translate(-2%,1%); }
@@ -460,7 +460,7 @@
     <span class="key">Échap</span> pour libérer le curseur.</p>
     <p class="small" id="blockerSmallHint">Visez un cadre et cliquez pour l'agrandir avec le son. Le bouton ⚙ (en haut à droite) reste toujours accessible.</p>
   </div>
-  <div id="versionTag">V1.2.1</div>
+  <div id="versionTag">V1.3.1</div>
 </div>
 
 <div id="crosshair"></div>
@@ -1004,6 +1004,18 @@ function wallCanvasSize(wallKey) {
   return { width: WALL_CANVAS_W, height: WALL_CANVAS_H };
 }
 
+// Les murs de salle sont bien plus larges que ceux du couloir (jusqu'à 2,7x,
+// salle=16 contre couloir=6) — un même réglage de texte/photo y reste
+// proportionnellement identique, mais "se perd" visuellement sur une
+// surface aussi grande. Ce facteur amplifie leur présence sur les grands
+// murs, appliqué de façon identique dans l'éditeur ET sur le vrai mur.
+function wallContentScaleFactor(wallKey) {
+  if (!isRoomWallKey(wallKey)) return 1;
+  const room = EXTRA_ROOMS[wallKey.split(':')[0]];
+  const size = room ? room.size : ROOM2_SIZE;
+  return Math.sqrt(size / CELL);
+}
+
 // Dessine uniquement le motif de fond (sans texte) d'un mur donné — couloir
 // (palette courante) ou salle (palette propre à cette salle).
 function drawWallBackgroundPattern(ctx, wallKey, cw, ch) {
@@ -1056,11 +1068,12 @@ function renderWallCanvas(wallKey, canvas) {
   // buildPhotoObjectsForWall), positionnés par-dessus — même principe que
   // les cadres, qui ont toujours leur propre texture séparée.
   const blocks = (wallTexts[wallKey] || []).filter(b => b.type !== 'photo');
+  const wallScaleFactor = wallContentScaleFactor(wallKey);
   blocks.forEach(b => {
     ctx.save();
     ctx.translate(b.x * canvas.width, b.y * canvas.height);
     ctx.rotate((b.rotation || 0) * Math.PI / 180);
-    ctx.scale(b.scale || 1, b.scale || 1);
+    ctx.scale((b.scale || 1) * wallScaleFactor, (b.scale || 1) * wallScaleFactor);
     ctx.font = cssFontString(b);
     ctx.fillStyle = b.color || '#e8ddc8';
     ctx.textAlign = 'center';
@@ -1165,7 +1178,7 @@ function buildPhotoObjectsForWall(wallKey) {
     tex.minFilter = THREE.NearestFilter;
     tex.encoding = THREE.sRGBEncoding;
 
-    const photoW = t.width * PHOTO_WIDTH_FRACTION * (b.scale || 1);
+    const photoW = t.width * PHOTO_WIDTH_FRACTION * (b.scale || 1) * wallContentScaleFactor(wallKey);
     const photoH = photoW * (entry.source.height / entry.source.width || 0.75);
     const pinOffsetY = photoH/2 + 0.05; // distance entre la punaise (origine du groupe) et le centre de la photo
 
@@ -1852,6 +1865,137 @@ function walkSegments(segments) {
 // tracé dans l'éditeur, mais sur la géométrie RÉELLEMENT appliquée (pas un
 // brouillon en cours d'édition), reconstruite à chaque changement.
 let galleryMapGroup = null;
+// Rendu "plan d'architecte sur papier vieilli" pour la carte affichée dans
+// le couloir — volontairement différent de l'aperçu de l'éditeur (qui reste
+// coloré et fonctionnel pour l'édition) : fond papier moucheté avec une
+// tache d'humidité, traits fins noirs, portes en coupure du trait, titre.
+function drawGalleryMapPaperStyle(canvas) {
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  // Fond papier.
+  ctx.fillStyle = '#c7c0ac';
+  ctx.fillRect(0, 0, W, H);
+  // Mouchetures : seed fixe, pour que le papier ne "scintille" pas à chaque
+  // reconstruction de la carte.
+  const paperRng = mulberry32(42);
+  for (let i = 0; i < 900; i++) {
+    const x = paperRng()*W, y = paperRng()*H;
+    const shade = paperRng() > 0.5 ? 0 : 255;
+    ctx.fillStyle = `rgba(${shade},${shade},${shade},${0.02 + paperRng()*0.04})`;
+    ctx.fillRect(x, y, 1.5, 1.5);
+  }
+  // Tache d'humidité dans un coin.
+  const stainX = W*0.74, stainY = H*0.2;
+  const stainGrad = ctx.createRadialGradient(stainX, stainY, 0, stainX, stainY, W*0.16);
+  stainGrad.addColorStop(0, 'rgba(40,35,25,.28)');
+  stainGrad.addColorStop(1, 'rgba(40,35,25,0)');
+  ctx.fillStyle = stainGrad;
+  ctx.fillRect(0, 0, W, H);
+  // Vignette douce, pour le côté "vieux document".
+  const vignette = ctx.createRadialGradient(W/2, H/2, Math.min(W,H)*0.35, W/2, H/2, Math.max(W,H)*0.7);
+  vignette.addColorStop(0, 'rgba(0,0,0,0)');
+  vignette.addColorStop(1, 'rgba(30,25,18,.35)');
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, W, H);
+
+  const { cells, visitedGrid, scale, offX, offY } = computeMinimapLayout(canvas, true);
+  const dirs = [{k:'N',x:0,z:-1},{k:'S',x:0,z:1},{k:'E',x:1,z:0},{k:'W',x:-1,z:0}];
+
+  // Sol des pièces : à peine plus clair, pour distinguer l'intérieur sans
+  // rompre l'aspect papier.
+  ctx.fillStyle = 'rgba(255,255,255,.05)';
+  cells.forEach(({gx, gz}) => ctx.fillRect(offX + gx*scale, offY + gz*scale, scale, scale));
+
+  // Murs : traits fins noirs, façon plan d'architecte — rien du tout pour
+  // une ouverture/un carrefour, et une petite coupure perpendiculaire pour
+  // une porte (comme le symbole classique de porte entrouverte).
+  ctx.strokeStyle = 'rgba(35,30,22,.75)';
+  ctx.lineWidth = Math.max(1, scale*0.025);
+  ctx.lineCap = 'butt';
+  cells.forEach(({gx, gz}) => {
+    dirs.forEach(d => {
+      const neighborVisited = visitedGrid.has((gx+d.x) + ',' + (gz+d.z));
+      const override = manualEdges[edgeKey(gx, gz, d.k)];
+      const isDoor = !neighborVisited && override === 'door';
+      const isWall = neighborVisited ? override === 'wall' : !isDoor;
+      if (!isWall) return;
+      let x1, y1, x2, y2;
+      if (d.x === 0) {
+        const y = offY + (d.z < 0 ? gz : gz+1) * scale;
+        x1 = offX + gx*scale; y1 = y; x2 = offX + (gx+1)*scale; y2 = y;
+      } else {
+        const xw = offX + (d.x < 0 ? gx : gx+1) * scale;
+        x1 = xw; y1 = offY + gz*scale; x2 = xw; y2 = offY + (gz+1)*scale;
+      }
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    });
+  });
+  ctx.strokeStyle = 'rgba(35,30,22,.5)';
+  cells.forEach(({gx, gz}) => {
+    dirs.forEach(d => {
+      const neighborVisited = visitedGrid.has((gx+d.x) + ',' + (gz+d.z));
+      const override = manualEdges[edgeKey(gx, gz, d.k)];
+      if (neighborVisited || override !== 'door') return;
+      let mx, my;
+      if (d.x === 0) { mx = offX + (gx+0.5)*scale; my = offY + (d.z < 0 ? gz : gz+1) * scale; }
+      else { mx = offX + (d.x < 0 ? gx : gx+1) * scale; my = offY + (gz+0.5)*scale; }
+      const r = scale*0.18;
+      ctx.beginPath();
+      if (d.x === 0) { ctx.moveTo(mx-r, my); ctx.lineTo(mx+r, my); }
+      else { ctx.moveTo(mx, my-r); ctx.lineTo(mx, my+r); }
+      ctx.stroke();
+    });
+  });
+
+  // Repères discrets : une petite croix pour un mur qui porte un cadre, un
+  // petit rond creux pour une plante — à peine visibles, comme des
+  // annotations légères sur un vrai plan.
+  ctx.strokeStyle = 'rgba(35,30,22,.45)';
+  ctx.lineWidth = 1;
+  cells.forEach(({gx, gz, x, z}) => {
+    dirs.forEach(d => {
+      const wallX = x + d.x*CELL/2, wallZ = z + d.z*CELL/2;
+      if (!findFrameNearWall(wallX, wallZ)) return;
+      let mx, my;
+      if (d.x === 0) { mx = offX + (gx+0.5)*scale; my = offY + (d.z < 0 ? gz : gz+1) * scale; }
+      else { mx = offX + (d.x < 0 ? gx : gx+1) * scale; my = offY + (gz+0.5)*scale; }
+      const r = Math.max(2, scale*0.06);
+      ctx.beginPath();
+      ctx.moveTo(mx-r, my-r); ctx.lineTo(mx+r, my+r);
+      ctx.moveTo(mx+r, my-r); ctx.lineTo(mx-r, my+r);
+      ctx.stroke();
+    });
+  });
+  manualPlants.filter(p => p.kind === 'corridor').forEach(p => {
+    const pos = worldToMinimapCanvas(p.x, p.z, cells, scale, offX, offY);
+    if (!pos) return;
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, Math.max(2, scale*0.08), 0, Math.PI*2);
+    ctx.stroke();
+  });
+
+  // Point de départ : petite flèche, comme sur un vrai plan d'évacuation.
+  const startGX = 0, startGZ = Math.round(CORRIDOR_START_Z / CELL);
+  const sx = offX + (startGX+0.5)*scale, sy = offY + (startGZ+0.5)*scale;
+  ctx.fillStyle = 'rgba(70,110,70,.75)';
+  ctx.beginPath();
+  ctx.moveTo(sx, sy - scale*0.18);
+  ctx.lineTo(sx + scale*0.12, sy + scale*0.12);
+  ctx.lineTo(sx, sy + scale*0.04);
+  ctx.lineTo(sx - scale*0.12, sy + scale*0.12);
+  ctx.closePath();
+  ctx.fill();
+
+  // Titre, en haut à gauche.
+  ctx.fillStyle = 'rgba(35,30,22,.8)';
+  ctx.font = `${Math.round(H*0.045)}px Georgia, serif`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText('LA GALERIE', W*0.04, H*0.03);
+}
+
 function buildGalleryMap() {
   if (galleryMapGroup) {
     galleryMapGroup.traverse(obj => {
@@ -1867,7 +2011,7 @@ function buildGalleryMap() {
 
   const canvas = document.createElement('canvas');
   canvas.width = 640; canvas.height = 480;
-  drawMinimapInto(canvas, true); // true = géométrie réellement appliquée
+  drawGalleryMapPaperStyle(canvas);
   const tex = new THREE.CanvasTexture(canvas);
   tex.magFilter = THREE.NearestFilter;
   tex.minFilter = THREE.NearestFilter;
@@ -3889,6 +4033,7 @@ function renderTextBlocksLayer() {
   // une fois appliquée au vrai mur, et déborde. On corrige en affichant les
   // textes à leur taille RELATIVE réelle (résolution interne / taille affichée).
   const displayScale = wallTextCanvas.getBoundingClientRect().width / wallTextCanvas.width;
+  const wallScaleFactor = wallContentScaleFactor(currentWallTextKey);
   (wallTexts[currentWallTextKey] || []).forEach(block => {
     if (block.type === 'photo') {
       const el = document.createElement('div');
@@ -3900,9 +4045,11 @@ function renderTextBlocksLayer() {
       // du mur (pas une simple %, qui ne se résout pas correctement à travers
       // un parent positionné en absolu sans largeur propre) — correspond
       // ainsi à PHOTO_WIDTH_FRACTION, la même fraction utilisée pour le vrai
-      // objet 3D, donc ce qu'on voit ici est fidèle au résultat réel.
+      // objet 3D, donc ce qu'on voit ici est fidèle au résultat réel. Le
+      // facteur des murs de salle (wallScaleFactor) est appliqué de la même
+      // façon que sur le vrai mur.
       const wallDisplayWidth = wallTextCanvas.getBoundingClientRect().width;
-      img.style.width = (PHOTO_WIDTH_FRACTION * wallDisplayWidth * (block.scale || 1)) + 'px';
+      img.style.width = (PHOTO_WIDTH_FRACTION * wallDisplayWidth * (block.scale || 1) * wallScaleFactor) + 'px';
       el.appendChild(img);
       el.style.left = (block.x*100) + '%';
       el.style.top = (block.y*100) + '%';
@@ -3918,7 +4065,7 @@ function renderTextBlocksLayer() {
     el.className = 'wallTextBlock' + (block.id === selectedTextBlockId ? ' selected' : '');
     el.textContent = block.text;
     el.style.color = block.color || '#e8ddc8';
-    el.style.fontSize = ((block.fontSize || 32) * displayScale) + 'px';
+    el.style.fontSize = ((block.fontSize || 32) * displayScale * wallScaleFactor) + 'px';
     el.style.fontFamily = block.fontFamily || "Georgia, 'Times New Roman', serif";
     el.style.fontWeight = block.bold ? 'bold' : 'normal';
     el.style.fontStyle = block.italic ? 'italic' : 'normal';
