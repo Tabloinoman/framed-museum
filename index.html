@@ -184,6 +184,17 @@
   #videoModal video { display:block; width:100%; max-height:78vh; background:#000; }
   #videoModal iframe { display:none; width:100%; aspect-ratio:16/9; max-height:78vh; background:#000; }
   #videoModal img#modalImage { display:none; width:100%; max-height:78vh; object-fit:contain; background:#000; }
+  #modalLoading {
+    display:none; width:100%; aspect-ratio:16/9; max-height:78vh; background:#000;
+    align-items:center; justify-content:center; color:#a89a82; font-family:Georgia,serif;
+    font-size:1rem; letter-spacing:.05em;
+  }
+  #modalLoading::before {
+    content:''; display:inline-block; width:16px; height:16px; margin-right:10px;
+    border:2px solid #a89a82; border-top-color:#cba135; border-radius:50%;
+    animation: modalSpin .8s linear infinite;
+  }
+  @keyframes modalSpin { to { transform:rotate(360deg); } }
   #videoModal .modalCaption {
     display:flex; align-items:center; justify-content:space-between;
     background:#141110; color:#cba135; padding:10px 16px; font-size:.85rem; letter-spacing:.05em;
@@ -228,7 +239,7 @@
     padding:14px;
   }
   #galleryMapZoomCanvas {
-    display:block; width:min(85vw, 900px); height:min(78vh, 675px);
+    display:block; width:min(85vw, 900px); aspect-ratio:4/3; height:auto; max-height:78vh;
     image-rendering: pixelated; background:#0a0908;
   }
   #galleryMapZoomOverlay .zoomClose {
@@ -487,11 +498,11 @@
     <h1>LA GALERIE</h1>
     <p id="blockerInstructions">Cliquez pour entrer.<br>
     <span class="key">Z/W</span> <span class="key">Q/A</span> <span class="key">S</span> <span class="key">D</span>
-    ou flèches pour marcher — souris pour regarder — <span class="key">Espace</span> pour sauter.<br>
+    ou flèches pour marcher — souris pour regarder.<br>
     <span class="key">Échap</span> pour libérer le curseur.</p>
     <p class="small" id="blockerSmallHint">Visez un cadre et cliquez pour l'agrandir avec le son. Le bouton ⚙ (en haut à droite) reste toujours accessible.</p>
   </div>
-  <div id="versionTag">V1.5.0</div>
+  <div id="versionTag">V1.6.0</div>
 </div>
 
 <div id="crosshair"></div>
@@ -513,6 +524,7 @@
     <video id="modalVideo" playsinline controls preload="auto"></video>
     <iframe id="modalIframe" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen frameborder="0"></iframe>
     <img id="modalImage" alt="">
+    <div id="modalLoading">Chargement…</div>
     <div class="modalCaption">
       <span id="modalTitle">Lecture</span>
       <button id="closeModalBtn">Fermer ✕</button>
@@ -828,6 +840,7 @@ function isGameActive() {
   return (document.pointerLockElement === renderer.domElement) || (isTouchDevice && mobileActive);
 }
 const MOVE_SPEED = 4.2;
+const SPRINT_MULTIPLIER = 1.8; // vitesse en courant (Shift), pas mentionné à l'écran d'accueil
 const JUMP_SPEED = 4.8;   // vitesse verticale initiale du saut
 const GRAVITY = 13;       // accélération vers le bas
 let verticalVelocity = 0;
@@ -2828,10 +2841,13 @@ interactBtn.addEventListener('click', () => {
 });
 
 const jumpBtn = document.getElementById('jumpBtn');
-jumpBtn.addEventListener('click', () => {
+function triggerJump(e) {
+  if (e.type === 'touchstart') e.preventDefault(); // évite le clic synthétisé en double juste après
   if (!isGameActive() || adminOpen || modalOpen || geoOpen) return;
   if (isGrounded) { verticalVelocity = JUMP_SPEED; isGrounded = false; }
-});
+}
+jumpBtn.addEventListener('touchstart', triggerJump, { passive: false });
+jumpBtn.addEventListener('click', triggerJump);
 
 const blocker = document.getElementById('blocker');
 const hint = document.getElementById('hint');
@@ -3068,6 +3084,7 @@ const videoModal = document.getElementById('videoModal');
 const modalVideo = document.getElementById('modalVideo');
 const modalIframe = document.getElementById('modalIframe');
 const modalImage = document.getElementById('modalImage');
+const modalLoading = document.getElementById('modalLoading');
 const modalTitle = document.getElementById('modalTitle');
 const closeModalBtn = document.getElementById('closeModalBtn');
 modalVideo.loop = true; // le lecteur interne boucle, sans effet VHS (c'est un <video> DOM normal)
@@ -3149,9 +3166,13 @@ modalVideo.addEventListener('error', () => {
   modalTitle.textContent = msg;
 });
 
+let modalOpenFrameId = null; // permet de rafraîchir le contenu affiché une fois le Sheet chargé
+
 function openVideoModal(frameId) {
   const frame = frames[frameId];
   if (!frame) return;
+  modalOpenFrameId = frameId;
+
   // Vrai si, À L'ORIGINE (avant tout filet de sécurité ci-dessous), aucun
   // lien de clic n'avait été configuré pour ce cadre — sert à savoir si on
   // doit afficher l'aperçu à la place, et si le titre par défaut doit être
@@ -3162,36 +3183,43 @@ function openVideoModal(frameId) {
   // Filet de sécurité ultime, vérifié à l'instant même du clic : si le lien
   // au clic est vide (ou le cadre resté coincé en mode "iframe" d'un ancien
   // test) alors qu'un aperçu vidéo existe, on le corrige ici avant d'ouvrir —
-  // qu'on soit passé ou non par l'éditeur de géométrie auparavant. On attend
-  // que le Google Sheet ait eu sa chance de répondre avant de figer quoi que
-  // ce soit : sinon, sur un réseau lent, l'aperçu par défaut (fleur) — qui se
-  // charge souvent plus vite que la requête vers le Sheet — se retrouverait
-  // enregistré ici en dur avant même que le vrai lien n'ait pu s'appliquer.
-  if (sheetConfigLoaded && hadNoClickLinkOriginally && frame.previewUrl && isLikelyVideoUrl(frame.previewUrl)) {
+  // qu'on soit passé ou non par l'éditeur de géométrie auparavant.
+  if (sheetConfigLoaded && hadNoClickLinkOriginally && frame.previewUrl && frame.previewUrl !== DEFAULT_VIDEO && isLikelyVideoUrl(frame.previewUrl)) {
     setClickVideoQuietly(frame, frame.previewUrl);
   }
-
-  // Si toujours aucun lien de clic (ex. l'aperçu est une image, pas une
-  // vidéo, donc le filet de sécurité ci-dessus ne s'applique pas) mais qu'un
-  // aperçu existe, on l'affiche quand même plutôt que de ne rien faire.
-  let contentUrl = frame.currentSrc;
-  const usingPreviewFallback = hadNoClickLinkOriginally && !!frame.previewUrl;
-  if (frame.kind === 'video' && !contentUrl && frame.previewUrl) contentUrl = frame.previewUrl;
-  if (frame.kind === 'video' && !contentUrl) return; // vraiment rien à montrer
 
   modalOpen = true;
   mobileActive = false;
   if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
-  // Coupe le son ambiant et celui des cadres en arrière-plan. Sur ordinateur,
-  // exitPointerLock() ci-dessus déclenche 'pointerlockchange' qui s'en charge
-  // déjà — mais sur tactile, il n'y a jamais eu de pointer lock à libérer,
-  // donc cet évènement ne se déclenche jamais : il faut le faire ici, sinon
-  // le son de fond continue pendant la lecture plein écran.
   onGameDeactivated();
+
+  // Le Google Sheet n'a pas encore eu le temps de répondre (réseau lent, par
+  // exemple) : on ne sait pas encore ce que ce cadre doit vraiment afficher.
+  // Plutôt que de jouer la fleur de démonstration (qui ressemble à un vrai
+  // contenu, très trompeur) le temps que ça arrive, on affiche un vrai
+  // indicateur de chargement — refreshOpenModalIfReady() prendra le relais
+  // dès que le Sheet aura répondu.
+  if (!sheetConfigLoaded) {
+    showModalLoadingState();
+    videoModal.classList.add('open');
+    return;
+  }
+
+  // Si toujours aucun lien de clic (ex. l'aperçu est une image, pas une
+  // vidéo, donc le filet de sécurité ci-dessus ne s'applique pas) mais qu'un
+  // VRAI aperçu (pas la fleur décorative) existe, on l'affiche quand même
+  // plutôt que de ne rien faire.
+  let contentUrl = frame.currentSrc;
+  const hasRealPreview = !!frame.previewUrl && frame.previewUrl !== DEFAULT_VIDEO;
+  const usingPreviewFallback = hadNoClickLinkOriginally && hasRealPreview;
+  if (frame.kind === 'video' && !contentUrl && hasRealPreview) contentUrl = frame.previewUrl;
+  if (frame.kind === 'video' && !contentUrl) { modalOpen = false; return; } // vraiment rien à montrer, même après avoir attendu le Sheet
+
   // Pas de titre par défaut quand on se contente d'afficher l'aperçu faute de
   // lien de clic — sauf si un titre personnalisé a été renseigné exprès.
   const customTitle = frameTitles[frame.config.id];
   modalTitle.textContent = (usingPreviewFallback && !customTitle) ? '' : frameDisplayLabel(frame);
+  modalLoading.style.display = 'none';
 
   if (frame.kind === 'embed') {
     // Lien YouTube / Instagram / Drive : on utilise leur vrai player officiel dans un iframe.
@@ -3227,11 +3255,32 @@ function openVideoModal(frameId) {
   }
 }
 
+function showModalLoadingState() {
+  modalVideo.pause();
+  modalVideo.style.display = 'none';
+  modalIframe.style.display = 'none';
+  modalIframe.src = '';
+  modalImage.style.display = 'none';
+  modalTitle.textContent = '';
+  modalLoading.style.display = 'flex';
+}
+
+// Appelé une fois que le Google Sheet a fini de répondre : si la fenêtre est
+// encore ouverte sur un cadre qui attendait (indicateur de chargement),
+// on la rafraîchit avec le VRAI contenu maintenant connu.
+function refreshOpenModalIfWaiting() {
+  if (modalOpen && modalOpenFrameId && modalLoading.style.display === 'flex') {
+    openVideoModal(modalOpenFrameId);
+  }
+}
+
 function closeVideoModal() {
   stopStallWatchdog();
   modalVideo.pause();
   modalIframe.src = ''; // coupe la lecture de l'iframe en fermant
   modalImage.src = '';
+  modalLoading.style.display = 'none';
+  modalOpenFrameId = null;
   videoModal.classList.remove('open');
   modalOpen = false;
   blocker.classList.add('hidden');
@@ -3353,9 +3402,10 @@ function animate() {
       const norm = Math.max(1, Math.hypot(moveX, moveZ));
       moveX /= norm; moveZ /= norm;
 
+      const speed = MOVE_SPEED * (isDown('ShiftLeft','ShiftRight') ? SPRINT_MULTIPLIER : 1);
       const prevX = yawObject.position.x, prevZ = yawObject.position.z;
-      yawObject.translateX(moveX * MOVE_SPEED * delta);
-      yawObject.translateZ(moveZ * MOVE_SPEED * delta);
+      yawObject.translateX(moveX * speed * delta);
+      yawObject.translateZ(moveZ * speed * delta);
       const newX = yawObject.position.x, newZ = yawObject.position.z;
 
       // Collision axe par axe (glisse le long des murs) contre les boîtes praticables du tracé.
@@ -4127,7 +4177,6 @@ function openWallTextEditor(wallKey) {
   updateWallTextControls();
   wallTextOverlay.classList.add('open');
   if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
-  exitGalleryFullscreen();
   mobileActive = false;
   onGameDeactivated();
 }
@@ -4141,6 +4190,11 @@ function closeWallTextEditor() {
   const indicator = document.getElementById('wallTextFrameIndicator');
   if (indicator) indicator.remove();
   currentWallTextKey = null;
+  // Masqué tout de suite (pas seulement une fois le pointer lock effectivement
+  // ré-obtenu, ce qui est asynchrone et parfois retardé/refusé par le
+  // navigateur) — sinon on retombe brièvement, ou parfois durablement, sur
+  // l'écran d'accueil avant de revenir face au mur.
+  blocker.classList.add('hidden');
   unlockAudio();
   requestGalleryFullscreen();
   if (isTouchDevice) { mobileActive = true; onGameActivated(); }
@@ -5258,7 +5312,7 @@ function parseCsvLine(line) {
 let sheetConfigLoaded = false; // vrai une fois que le Sheet a eu sa chance de s'appliquer (succès ou échec)
 
 async function loadGoogleSheetConfig() {
-  if (!SHEET_READ_CSV_URL) { sheetConfigLoaded = true; return; }
+  if (!SHEET_READ_CSV_URL) { sheetConfigLoaded = true; refreshOpenModalIfWaiting(); return; }
   try {
     const res = await fetch(SHEET_READ_CSV_URL);
     if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -5325,6 +5379,7 @@ async function loadGoogleSheetConfig() {
     console.warn('Impossible de charger la configuration depuis le Google Sheet :', e);
   } finally {
     sheetConfigLoaded = true;
+    refreshOpenModalIfWaiting();
   }
 }
 
