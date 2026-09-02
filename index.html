@@ -171,27 +171,6 @@
     box-shadow: 0 0 6px rgba(203,161,53,.8);
   }
 
-  #guardSpeechBubble {
-    position:fixed; z-index:7; pointer-events:none;
-    max-width:min(320px, 70vw); transform:translate(-50%, calc(-100% + 8px));
-    background:#f4f0e6; color:#241f1a; font-family:'Courier New',monospace; font-size:1.05rem; font-weight:bold;
-    padding:10px 14px; border-radius:3px; text-align:center; line-height:1.4;
-    border:3px solid #241f1a; box-shadow:4px 4px 0 rgba(0,0,0,.45);
-    opacity:0; transition: opacity .2s ease;
-  }
-  /* Pointe de la bulle façon pixel art : un triangle bordé, obtenu avec deux
-     triangles superposés (un plus grand en couleur de bordure, un plus petit
-     par-dessus en couleur de fond) plutôt qu'un simple triangle flou. */
-  #guardSpeechBubble::before {
-    content:''; position:absolute; bottom:-13px; left:50%; margin-left:-8px;
-    border-width:13px 8px 0; border-style:solid; border-color:#241f1a transparent transparent;
-  }
-  #guardSpeechBubble::after {
-    content:''; position:absolute; bottom:-8px; left:50%; margin-left:-5px;
-    border-width:9px 5px 0; border-style:solid; border-color:#f4f0e6 transparent transparent;
-  }
-  #guardSpeechBubble.show { opacity:1; }
-
   #hint {
     position:fixed; bottom:22px; left:50%; transform:translateX(-50%);
     color:#a89a82; font-size:.78rem; letter-spacing:.05em; z-index:10;
@@ -629,7 +608,7 @@
   <div id="homeTextAdminControls">
     <span id="homeTextStyleBtn" title="Style du texte">🎨</span>
   </div>
-  <div id="versionTag">V2.1.2</div>
+  <div id="versionTag">V2.2.0</div>
 </div>
 
 <div id="homeTextEditor">
@@ -665,7 +644,6 @@
 </div>
 
 <div id="crosshair"></div>
-<div id="guardSpeechBubble"></div>
 <div id="vhsOverlay"><div class="scanBar"></div></div>
 <div id="vhsGifLayer"></div>
 <div id="hint">Cliquez sur un cadre pour l'agrandir, ou sur une porte pour changer de pièce · Échap pour libérer le curseur · ⚙ pour l'admin</div>
@@ -1148,9 +1126,14 @@ document.body.appendChild(renderer.domElement);
 
 // ---------- Rendu pixel art : résolution interne réduite ----------
 let pixelScale = 4;
+// Plafond absolu, pas seulement relatif à la fenêtre : sans lui, un grand
+// écran d'ordinateur calcule une résolution interne bien plus grande qu'un
+// téléphone pour le même réglage (jusqu'à 6x plus de pixels sur un écran
+// 1920px de large vs un mobile) — d'où le ralentissement observé sur ordinateur.
+const MAX_RENDER_W = 240, MAX_RENDER_H = 170;
 function applyPixelation() {
-  const lowW = Math.max(64, Math.floor(window.innerWidth / pixelScale));
-  const lowH = Math.max(48, Math.floor(window.innerHeight / pixelScale));
+  const lowW = Math.min(MAX_RENDER_W, Math.max(64, Math.floor(window.innerWidth / pixelScale)));
+  const lowH = Math.min(MAX_RENDER_H, Math.max(48, Math.floor(window.innerHeight / pixelScale)));
   renderer.setSize(lowW, lowH, false);
   renderer.domElement.style.width = '100%';
   renderer.domElement.style.height = '100%';
@@ -2305,30 +2288,108 @@ const MUSEUM_GUARD_LINES = [
 ];
 let guardSpeechHideTimeout = null;
 let guardBubbleVisible = false;
+let guardSpeechSprite = null;
 const guardBubbleWorldPos = new THREE.Vector3();
-function sayRandomGuardLine() {
-  const bubble = document.getElementById('guardSpeechBubble');
-  const line = MUSEUM_GUARD_LINES[Math.floor(Math.random() * MUSEUM_GUARD_LINES.length)];
-  bubble.textContent = line;
-  bubble.classList.add('show');
-  guardBubbleVisible = true;
-  updateGuardBubblePosition(); // se place tout de suite, pas seulement à la prochaine image
-  clearTimeout(guardSpeechHideTimeout);
-  guardSpeechHideTimeout = setTimeout(() => { bubble.classList.remove('show'); guardBubbleVisible = false; }, 3200);
+
+// Dessine la bulle (fond, bordure, pointe, texte avec retour à la ligne) sur
+// un petit canevas — une vraie texture dans la scène 3D, pas une couche HTML
+// par-dessus. Comme toute la scène est déjà rendue en basse résolution puis
+// agrandie (voir applyPixelation), la bulle hérite automatiquement du même
+// effet pixelisé que le reste — c'est ça, la vraie intégration demandée.
+function buildGuardSpeechCanvas(text) {
+  const W = 340, H = 130, tailH = 18;
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  const bodyH = H - tailH;
+  const border = 6;
+  ctx.fillStyle = '#241f1a';
+  ctx.fillRect(0, 0, W, bodyH);
+  ctx.fillStyle = '#f4f0e6';
+  ctx.fillRect(border, border, W - border*2, bodyH - border*2);
+
+  // Pointe, façon pixel art (bordée, pas juste un triangle flou).
+  ctx.fillStyle = '#241f1a';
+  ctx.beginPath();
+  ctx.moveTo(W/2 - 16, bodyH - 2);
+  ctx.lineTo(W/2 + 16, bodyH - 2);
+  ctx.lineTo(W/2, H);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#f4f0e6';
+  ctx.beginPath();
+  ctx.moveTo(W/2 - 8, bodyH - 2);
+  ctx.lineTo(W/2 + 8, bodyH - 2);
+  ctx.lineTo(W/2, H - 8);
+  ctx.closePath();
+  ctx.fill();
+
+  // Texte, avec retour à la ligne automatique selon la largeur disponible.
+  ctx.fillStyle = '#241f1a';
+  ctx.font = 'bold 20px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const maxTextWidth = W - border*2 - 16;
+  const words = text.split(' ');
+  const lines = [];
+  let current = '';
+  words.forEach(word => {
+    const test = current ? current + ' ' + word : word;
+    if (current && ctx.measureText(test).width > maxTextWidth) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = test;
+    }
+  });
+  if (current) lines.push(current);
+  const lineHeight = 22;
+  const startY = bodyH/2 - (lines.length - 1) * lineHeight / 2;
+  lines.forEach((line, i) => ctx.fillText(line, W/2, startY + i*lineHeight));
+
+  return canvas;
 }
 
-// Projette la position réelle de la tête du gardien (pas un point fixe à
-// l'écran) vers des coordonnées 2D, pour que la bulle reste bien au-dessus
-// de lui — y compris s'il n'est pas centré dans le champ de vision.
+function disposeGuardSpeechSprite() {
+  if (!guardSpeechSprite) return;
+  scene.remove(guardSpeechSprite);
+  guardSpeechSprite.material.map.dispose();
+  guardSpeechSprite.material.dispose();
+  guardSpeechSprite = null;
+}
+
+function sayRandomGuardLine() {
+  if (!museumGuardRefs) return;
+  const line = MUSEUM_GUARD_LINES[Math.floor(Math.random() * MUSEUM_GUARD_LINES.length)];
+  const canvas = buildGuardSpeechCanvas(line);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.magFilter = THREE.NearestFilter; // pas de flou à l'agrandissement, cohérent avec le reste
+  texture.minFilter = THREE.NearestFilter;
+
+  disposeGuardSpeechSprite();
+  const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false });
+  guardSpeechSprite = new THREE.Sprite(spriteMat);
+  guardSpeechSprite.scale.set(1.5, 1.5 * (130/340), 1);
+  guardSpeechSprite.renderOrder = 999; // toujours visible par-dessus le reste, jamais caché derrière un mur/cadre
+  scene.add(guardSpeechSprite);
+
+  guardBubbleVisible = true;
+  updateGuardBubblePosition(); // se place tout de suite, pas seulement à la prochaine image
+
+  clearTimeout(guardSpeechHideTimeout);
+  guardSpeechHideTimeout = setTimeout(() => { guardBubbleVisible = false; disposeGuardSpeechSprite(); }, 3200);
+}
+
+// Le Sprite fait toujours face à la caméra tout seul (comportement natif de
+// THREE.Sprite) — reste juste à le positionner au-dessus de la tête du
+// gardien, en suivant sa vraie position dans le monde.
 function updateGuardBubblePosition() {
-  if (!guardBubbleVisible || !museumGuardRefs || !museumGuardRefs.headGroup) return;
+  if (!guardBubbleVisible || !guardSpeechSprite || !museumGuardRefs || !museumGuardRefs.headGroup) return;
   museumGuardRefs.headGroup.getWorldPosition(guardBubbleWorldPos);
-  guardBubbleWorldPos.y += 0.45; // nettement au-dessus du chapeau, pas juste au ras
-  const v = guardBubbleWorldPos.clone().project(camera);
-  const bubble = document.getElementById('guardSpeechBubble');
-  if (v.z > 1) { bubble.classList.remove('show'); return; } // derrière la caméra : on cache plutôt que de l'afficher n'importe où
-  bubble.style.left = ((v.x * 0.5 + 0.5) * window.innerWidth) + 'px';
-  bubble.style.top = ((-v.y * 0.5 + 0.5) * window.innerHeight) + 'px';
+  guardBubbleWorldPos.y += 0.55; // nettement au-dessus du chapeau
+  guardSpeechSprite.position.copy(guardBubbleWorldPos);
 }
 
 function updateMuseumGuardAnimation(t, delta) {
