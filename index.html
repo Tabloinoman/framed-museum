@@ -608,7 +608,7 @@
   <div id="homeTextAdminControls">
     <span id="homeTextStyleBtn" title="Style du texte">🎨</span>
   </div>
-  <div id="versionTag">V2.0.0</div>
+  <div id="versionTag">V2.0.1</div>
 </div>
 
 <div id="homeTextEditor">
@@ -2228,7 +2228,7 @@ function placeMuseumGuard(spot) {
   if (!spot) return;
 
   const dir = CARDINAL[spot.side];
-  const wallInset = CELL/2 - 0.55; // recul depuis le mur pour la chaise
+  const wallInset = CELL/2 - 0.85; // recul depuis le mur pour la chaise (marge augmentée : le gardien est 2x plus grand)
   const baseX = spot.cell.x + dir.x*wallInset;
   const baseZ = spot.cell.z + dir.z*wallInset;
   const rotY = wallRotationForInwardNormal(-dir.x, -dir.z); // dos au mur, face vers le couloir
@@ -2236,6 +2236,7 @@ function placeMuseumGuard(spot) {
   const group = new THREE.Group();
   group.position.set(baseX, 0, baseZ);
   group.rotation.y = rotY;
+  group.scale.set(2, 2, 2);
 
   const chair = buildGuardChairMesh();
   group.add(chair);
@@ -2273,9 +2274,18 @@ let guardTransitioning = false;
 let guardPoseHoldUntil = 3 + Math.random()*3;
 let guardHeadPitch = 0;
 
+// La position de base revient plus souvent que les 3 autres (poids plus
+// élevé dans le tirage) et dure aussi plus longtemps une fois atteinte.
+const GUARD_POSE_WEIGHTS = { base: 4, lookHands: 1, knees: 1, scratch: 1 };
 function pickNextGuardPose(excluding) {
   const choices = GUARD_POSE_NAMES.filter(p => p !== excluding);
-  return choices[Math.floor(Math.random() * choices.length)];
+  const totalWeight = choices.reduce((sum, p) => sum + GUARD_POSE_WEIGHTS[p], 0);
+  let roll = Math.random() * totalWeight;
+  for (const p of choices) {
+    roll -= GUARD_POSE_WEIGHTS[p];
+    if (roll <= 0) return p;
+  }
+  return choices[choices.length - 1];
 }
 
 function updateMuseumGuardAnimation(t, delta) {
@@ -2296,8 +2306,9 @@ function updateMuseumGuardAnimation(t, delta) {
       if (guardPoseT >= 1) {
         guardTransitioning = false;
         guardCurrentPose = guardToPose;
-        const holdBase = guardCurrentPose === 'knees' ? 4 : 2.5;
-        guardPoseHoldUntil = t + holdBase + Math.random()*4;
+        const holdBase = guardCurrentPose === 'knees' ? 4 : (guardCurrentPose === 'base' ? 8 : 2.5);
+        const holdRange = guardCurrentPose === 'base' ? 6 : 4;
+        guardPoseHoldUntil = t + holdBase + Math.random()*holdRange;
       }
     }
     const eased = guardPoseT * guardPoseT * (3 - 2 * guardPoseT);
