@@ -108,6 +108,34 @@
     font-family:'IBM Plex Mono', monospace; font-size:.68rem; letter-spacing:.04em;
     color:rgba(232,221,200,.35); pointer-events:none;
   }
+  #homeTextBlock {
+    position:fixed; left:50%; bottom:60px; transform:translateX(-50%); z-index:21;
+    max-width:80vw; text-shadow:0 2px 8px rgba(0,0,0,.7); pointer-events:none; white-space:pre-wrap;
+  }
+  #homeTextBlock:empty { display:none; }
+  #editHomeTextBtn {
+    position:fixed; right:16px; bottom:14px; z-index:22; display:none;
+    background:rgba(20,17,14,.7); border:1px solid rgba(203,161,53,.5); color:#e8ddc8;
+    width:32px; height:32px; border-radius:50%; cursor:pointer; font-size:.85rem;
+  }
+  #editHomeTextBtn:hover { background:rgba(203,161,53,.22); }
+  body.adminUnlocked #editHomeTextBtn { display:block; }
+
+  #homeTextEditor {
+    position:fixed; inset:0; z-index:61; display:flex; align-items:center; justify-content:center;
+    background:rgba(5,4,3,.82); opacity:0; pointer-events:none; transition:opacity .2s ease;
+  }
+  #homeTextEditor.open { opacity:1; pointer-events:auto; }
+  #homeTextEditor textarea {
+    background:#0a0908; border:1px solid #3a332c; color:#e8ddc8; padding:8px;
+    border-radius:4px; font-family:Georgia,serif; font-size:.85rem; resize:vertical;
+  }
+  #homeTextEditor select {
+    background:#0a0908; border:1px solid #3a332c; color:#e8ddc8; padding:7px; border-radius:4px; font-size:.85rem;
+  }
+  #homeTextEditor input[type=range] { width:100%; }
+  #homeTextEditor input[type=color] { width:100%; height:32px; background:none; border:1px solid #3a332c; border-radius:4px; padding:2px; }
+  #homeTextEditor .toggleBtn.active { background:rgba(203,161,53,.35); border-color:#cba135; }
 
   #crosshair {
     position:fixed; top:50%; left:50%; width:6px; height:6px; margin:-3px 0 0 -3px;
@@ -289,6 +317,11 @@
     text-shadow:0 2px 5px rgba(0,0,0,.7); padding:2px 4px; line-height:1.2;
   }
   .wallTextBlock.selected { outline:1.5px dashed rgba(203,161,53,.85); outline-offset:4px; }
+  .wallTextBlock.locked, .wallPhotoBlock.locked { cursor:default; }
+  .wallTextBlock.locked::after, .wallPhotoBlock.locked::after {
+    content:'🔒'; position:absolute; top:-2px; right:-6px; font-size:.65rem;
+    text-shadow:0 1px 3px rgba(0,0,0,.8); pointer-events:none;
+  }
   .wallPhotoBlock {
     position:absolute; cursor:move; user-select:none; touch-action:none;
     padding:8px 8px 12px; background:#f4f0e6; box-shadow:0 4px 14px rgba(0,0,0,.55);
@@ -364,6 +397,45 @@
     transition: background .2s, transform .2s;
   }
   #geoBtn:hover { background:rgba(203,161,53,.22); transform:scale(1.1); }
+
+  #lockBtn {
+    position:fixed; top:16px; right:70px; z-index:40;
+    width:44px; height:44px; border-radius:50%;
+    background:rgba(20,17,14,.7); border:1px solid rgba(203,161,53,.5);
+    color:#cba135; font-size:1.15rem; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    transition: background .2s, transform .2s;
+  }
+  #lockBtn:hover { background:rgba(203,161,53,.22); transform:scale(1.1); }
+  #lockBtn.unlocked { color:#7ab45a; border-color:rgba(122,180,90,.6); }
+  /* Décale ⚙ et 📐 d'une position quand ils sont visibles (déverrouillé),
+     puisque 🔒 occupe désormais la place la plus proche du bord. */
+  body.adminUnlocked #geoBtn { right:124px; }
+  body.adminUnlocked #adminBtn { right:178px; }
+  body:not(.adminUnlocked) #adminBtn, body:not(.adminUnlocked) #geoBtn { display:none; }
+
+  #lockPrompt {
+    position:fixed; inset:0; z-index:60; display:flex; align-items:center; justify-content:center;
+    background:rgba(5,4,3,.82); opacity:0; pointer-events:none; transition:opacity .2s ease;
+  }
+  #lockPrompt.open { opacity:1; pointer-events:auto; }
+  .lockPromptInner {
+    background:#141110; border:1px solid rgba(203,161,53,.5); border-radius:8px;
+    padding:22px; width:min(320px, 88vw); box-shadow:0 20px 60px rgba(0,0,0,.6);
+    display:flex; flex-direction:column; gap:10px;
+  }
+  .lockPromptInner label { font-size:.78rem; color:#a89a82; text-transform:uppercase; letter-spacing:.05em; }
+  .lockPromptInner input {
+    background:#0a0908; border:1px solid #3a332c; color:#e8ddc8; padding:9px 10px;
+    border-radius:4px; font-size:.95rem; font-family:Georgia,serif;
+  }
+  .lockPromptInner .row { display:flex; gap:8px; margin-top:4px; }
+  .lockPromptInner button {
+    flex:1; padding:8px; border-radius:4px; cursor:pointer; font-family:Georgia,serif; font-size:.85rem;
+    background:rgba(203,161,53,.18); border:1px solid rgba(203,161,53,.5); color:#e8ddc8;
+  }
+  .lockPromptInner button.secondary { background:transparent; }
+  .lockPromptInner button:hover { background:rgba(203,161,53,.3); }
 
   #adminPanel {
     position:fixed; top:0; right:calc(-1 * min(360px, 96vw)); width:min(340px, 92vw); height:100%; z-index:35;
@@ -509,7 +581,40 @@
     <span class="key">Échap</span> pour libérer le curseur.</p>
     <p class="small" id="blockerSmallHint">Visez un cadre et cliquez pour l'agrandir avec le son. Le bouton ⚙ (en haut à droite) reste toujours accessible.</p>
   </div>
-  <div id="versionTag">V1.8.0</div>
+  <div id="homeTextBlock"></div>
+  <button id="editHomeTextBtn" title="Éditer ce texte">✏️</button>
+  <div id="versionTag">V1.9.0</div>
+</div>
+
+<div id="homeTextEditor">
+  <div class="lockPromptInner" style="width:min(380px, 90vw);">
+    <label>Texte affiché sur la page d'accueil</label>
+    <textarea id="homeTextContent" rows="2" placeholder="Laissez vide pour ne rien afficher"></textarea>
+    <label>Police</label>
+    <select id="homeTextFontFamily">
+      <option value="Georgia, 'Times New Roman', serif">Georgia (classique)</option>
+      <option value="'Times New Roman', Times, serif">Times New Roman</option>
+      <option value="Arial, Helvetica, sans-serif">Arial</option>
+      <option value="'Trebuchet MS', sans-serif">Trebuchet MS</option>
+      <option value="Impact, 'Arial Narrow', sans-serif">Impact</option>
+      <option value="'Courier New', Courier, monospace">Courier New</option>
+      <option value="'Brush Script MT', cursive">Brush Script (manuscrite)</option>
+    </select>
+    <label>Taille <span id="homeTextFontSizeValue">28</span>px</label>
+    <input type="range" id="homeTextFontSize" min="10" max="80" step="2" value="28">
+    <label>Rotation <span id="homeTextRotationValue">0</span>°</label>
+    <input type="range" id="homeTextRotation" min="-45" max="45" step="1" value="0">
+    <div class="row">
+      <button class="secondary" id="homeTextBoldBtn"><b>G</b> Gras</button>
+      <button class="secondary" id="homeTextItalicBtn"><i>I</i> Italique</button>
+    </div>
+    <label>Couleur</label>
+    <input type="color" id="homeTextColor" value="#e8ddc8">
+    <div class="row">
+      <button class="secondary" id="homeTextEditorCancel">Fermer</button>
+      <button id="homeTextEditorApply">Appliquer</button>
+    </div>
+  </div>
 </div>
 
 <div id="crosshair"></div>
@@ -618,6 +723,7 @@
       <input type="range" id="wallTextRotation" min="-180" max="180" step="5" value="0">
       <label>Échelle <span id="wallTextScaleValue">1</span>×</label>
       <input type="range" id="wallTextScale" min="0.3" max="3" step="0.1" value="1">
+      <button class="secondary" id="toggleBlockLockBtn" style="display:none;">🔒 Verrouiller ce bloc</button>
       <button class="secondary" id="deleteWallTextBtn">Supprimer ce bloc</button>
     </div>
   </div>
@@ -625,6 +731,19 @@
 
 <button id="adminBtn" title="Panneau administrateur">⚙</button>
 <button id="geoBtn" title="Éditer la géométrie du couloir">📐</button>
+<button id="lockBtn" title="Accès administrateur">🔒</button>
+
+<div id="lockPrompt">
+  <div class="lockPromptInner">
+    <label>Code d'accès administrateur</label>
+    <input type="password" id="lockPasswordInput" placeholder="Code">
+    <div class="row">
+      <button class="secondary" id="lockPromptCancel">Annuler</button>
+      <button id="lockPromptSubmit">Déverrouiller</button>
+    </div>
+    <p class="urlHint" id="lockPromptError" style="color:#c0524a; display:none;">Code incorrect.</p>
+  </div>
+</div>
 
 <div id="adminPanel">
   <h2>Administration — Effets visuels</h2>
@@ -3574,6 +3693,139 @@ const pixelValueEl = document.getElementById('pixelValue');
 const muteBtn = document.getElementById('toggleMute');
 const playBtn = document.getElementById('togglePlay');
 
+// ============================================================
+// Verrouillage administrateur : un simple code d'accès, PAS une vraie
+// sécurité (ce site n'a pas de serveur pour vérifier quoi que ce soit) —
+// juste de quoi éviter qu'un visiteur curieux tombe par hasard sur les
+// boutons d'édition. Le mot de passe n'est jamais stocké en clair dans le
+// code : seule son empreinte (SHA-256) y figure, comparée à celle de ce que
+// la personne tape. Une fois déverrouillé, ça reste déverrouillé sur CET
+// appareil (pas besoin de retaper le code à chaque visite).
+const ADMIN_PASSWORD_HASH = '7573a7b9b51fe011bec933223c1e3af6bff60297d138ae9098dfb14119ec502c';
+const ADMIN_UNLOCK_STORAGE_KEY = 'galerie_admin_unlocked';
+let adminUnlocked = localStorage.getItem(ADMIN_UNLOCK_STORAGE_KEY) === '1';
+
+async function sha256Hex(text) {
+  const data = new TextEncoder().encode(text);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function applyAdminUnlockedUI() {
+  document.body.classList.toggle('adminUnlocked', adminUnlocked);
+  lockBtn.textContent = adminUnlocked ? '🔓' : '🔒';
+  lockBtn.classList.toggle('unlocked', adminUnlocked);
+  lockBtn.title = adminUnlocked ? 'Reverrouiller l\'accès administrateur' : 'Accès administrateur';
+  updateHomeTextEditVisibility();
+}
+
+const lockBtn = document.getElementById('lockBtn');
+const lockPrompt = document.getElementById('lockPrompt');
+const lockPasswordInput = document.getElementById('lockPasswordInput');
+const lockPromptError = document.getElementById('lockPromptError');
+
+function openLockPrompt() {
+  lockPasswordInput.value = '';
+  lockPromptError.style.display = 'none';
+  lockPrompt.classList.add('open');
+  lockPasswordInput.focus();
+}
+function closeLockPrompt() { lockPrompt.classList.remove('open'); }
+
+lockBtn.addEventListener('click', () => {
+  if (adminUnlocked) {
+    // Reverrouiller ne demande pas le code — seul le déverrouillage en a besoin.
+    adminUnlocked = false;
+    localStorage.removeItem(ADMIN_UNLOCK_STORAGE_KEY);
+    applyAdminUnlockedUI();
+    adminPanel.classList.remove('open');
+    geoPanel.classList.remove('open');
+  } else {
+    openLockPrompt();
+  }
+});
+document.getElementById('lockPromptCancel').addEventListener('click', closeLockPrompt);
+lockPrompt.addEventListener('click', (e) => { if (e.target === lockPrompt) closeLockPrompt(); });
+async function submitLockPassword() {
+  const hash = await sha256Hex(lockPasswordInput.value);
+  if (hash === ADMIN_PASSWORD_HASH) {
+    adminUnlocked = true;
+    localStorage.setItem(ADMIN_UNLOCK_STORAGE_KEY, '1');
+    applyAdminUnlockedUI();
+    closeLockPrompt();
+  } else {
+    lockPromptError.style.display = 'block';
+  }
+}
+document.getElementById('lockPromptSubmit').addEventListener('click', submitLockPassword);
+lockPasswordInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitLockPassword(); });
+
+// ============================================================
+// Bloc de texte personnalisable sur la page d'accueil — visible par tout le
+// monde en permanence, mais son CONTENU et son STYLE ne sont modifiables
+// que par la personne déverrouillée (bouton crayon, visible seulement dans
+// ce cas). Sauvegardé dans la géométrie partagée (comme le reste), donc
+// visible par tous les visiteurs, pas juste sur cet appareil.
+let homeTextBlock = {
+  text: '', fontSize: 28, rotation: 0, fontFamily: "Georgia, 'Times New Roman', serif",
+  bold: false, italic: false, color: '#e8ddc8',
+};
+const homeTextBlockEl = document.getElementById('homeTextBlock');
+function renderHomeTextBlock() {
+  homeTextBlockEl.textContent = homeTextBlock.text || '';
+  homeTextBlockEl.style.fontSize = homeTextBlock.fontSize + 'px';
+  homeTextBlockEl.style.fontFamily = homeTextBlock.fontFamily;
+  homeTextBlockEl.style.fontWeight = homeTextBlock.bold ? 'bold' : 'normal';
+  homeTextBlockEl.style.fontStyle = homeTextBlock.italic ? 'italic' : 'normal';
+  homeTextBlockEl.style.color = homeTextBlock.color;
+  homeTextBlockEl.style.transform = `translateX(-50%) rotate(${homeTextBlock.rotation}deg)`;
+}
+function updateHomeTextEditVisibility() {
+  // Rien de plus à faire ici : le bouton crayon se montre/cache via CSS
+  // (body.adminUnlocked) — cette fonction existe pour que d'éventuels
+  // ajouts futurs à la visibilité aient un seul endroit où vivre.
+}
+
+const homeTextEditor = document.getElementById('homeTextEditor');
+function openHomeTextEditor() {
+  document.getElementById('homeTextContent').value = homeTextBlock.text;
+  document.getElementById('homeTextFontFamily').value = homeTextBlock.fontFamily;
+  document.getElementById('homeTextFontSize').value = homeTextBlock.fontSize;
+  document.getElementById('homeTextFontSizeValue').textContent = homeTextBlock.fontSize;
+  document.getElementById('homeTextRotation').value = homeTextBlock.rotation;
+  document.getElementById('homeTextRotationValue').textContent = homeTextBlock.rotation;
+  document.getElementById('homeTextBoldBtn').classList.toggle('active', homeTextBlock.bold);
+  document.getElementById('homeTextItalicBtn').classList.toggle('active', homeTextBlock.italic);
+  document.getElementById('homeTextColor').value = homeTextBlock.color;
+  homeTextEditor.classList.add('open');
+}
+function closeHomeTextEditor() { homeTextEditor.classList.remove('open'); }
+document.getElementById('editHomeTextBtn').addEventListener('click', openHomeTextEditor);
+document.getElementById('homeTextEditorCancel').addEventListener('click', closeHomeTextEditor);
+homeTextEditor.addEventListener('click', (e) => { if (e.target === homeTextEditor) closeHomeTextEditor(); });
+document.getElementById('homeTextFontSize').addEventListener('input', (e) => {
+  document.getElementById('homeTextFontSizeValue').textContent = e.target.value;
+});
+document.getElementById('homeTextRotation').addEventListener('input', (e) => {
+  document.getElementById('homeTextRotationValue').textContent = e.target.value;
+});
+document.getElementById('homeTextBoldBtn').addEventListener('click', (e) => e.target.closest('button').classList.toggle('active'));
+document.getElementById('homeTextItalicBtn').addEventListener('click', (e) => e.target.closest('button').classList.toggle('active'));
+document.getElementById('homeTextEditorApply').addEventListener('click', () => {
+  homeTextBlock = {
+    text: document.getElementById('homeTextContent').value,
+    fontFamily: document.getElementById('homeTextFontFamily').value,
+    fontSize: parseFloat(document.getElementById('homeTextFontSize').value),
+    rotation: parseFloat(document.getElementById('homeTextRotation').value),
+    bold: document.getElementById('homeTextBoldBtn').classList.contains('active'),
+    italic: document.getElementById('homeTextItalicBtn').classList.contains('active'),
+    color: document.getElementById('homeTextColor').value,
+  };
+  renderHomeTextBlock();
+  saveGeometryToSheet();
+  closeHomeTextEditor();
+});
+
 FRAME_CONFIGS.forEach(cfg => {
   const opt = document.createElement('option');
   opt.value = cfg.id;
@@ -4406,7 +4658,7 @@ function renderTextBlocksLayer() {
   (wallTexts[currentWallTextKey] || []).forEach(block => {
     if (block.type === 'photo') {
       const el = document.createElement('div');
-      el.className = 'wallPhotoBlock' + (block.id === selectedTextBlockId ? ' selected' : '');
+      el.className = 'wallPhotoBlock' + (block.id === selectedTextBlockId ? ' selected' : '') + (block.locked ? ' locked' : '');
       const img = document.createElement('img');
       img.src = block.url || '';
       img.draggable = false;
@@ -4431,7 +4683,7 @@ function renderTextBlocksLayer() {
       return;
     }
     const el = document.createElement('div');
-    el.className = 'wallTextBlock' + (block.id === selectedTextBlockId ? ' selected' : '');
+    el.className = 'wallTextBlock' + (block.id === selectedTextBlockId ? ' selected' : '') + (block.locked ? ' locked' : '');
     el.textContent = block.text;
     el.style.color = block.color || '#e8ddc8';
     el.style.fontSize = ((block.fontSize || 32) * displayScale * wallScaleFactor) + 'px';
@@ -4447,6 +4699,10 @@ function renderTextBlocksLayer() {
 }
 
 function startDragTextBlock(e, blockId) {
+  const block = (wallTexts[currentWallTextKey] || []).find(b => b.id === blockId);
+  // Un bloc verrouillé par l'administrateur ne peut être sélectionné (donc ni
+  // déplacé, ni édité, ni supprimé) que par quelqu'un de déverrouillé.
+  if (block && block.locked && !adminUnlocked) return;
   e.stopPropagation();
   e.preventDefault();
   selectedTextBlockId = blockId;
@@ -4502,6 +4758,9 @@ function updateWallTextControls() {
   document.getElementById('wallTextRotationValue').textContent = Math.round(block.rotation || 0);
   document.getElementById('wallTextScale').value = block.scale || 1;
   document.getElementById('wallTextScaleValue').textContent = (block.scale || 1).toFixed(1);
+  const lockToggleBtn = document.getElementById('toggleBlockLockBtn');
+  lockToggleBtn.style.display = adminUnlocked ? 'block' : 'none';
+  lockToggleBtn.textContent = block.locked ? '🔓 Déverrouiller ce bloc' : '🔒 Verrouiller ce bloc';
 }
 
 document.getElementById('addWallTextBtn').addEventListener('click', () => {
@@ -4648,6 +4907,16 @@ document.getElementById('wallTextColor').addEventListener('input', (e) => {
   block.color = e.target.value;
   renderTextBlocksLayer();
 });
+document.getElementById('toggleBlockLockBtn').addEventListener('click', () => {
+  if (!adminUnlocked) return; // le bouton n'est de toute façon visible que dans ce cas
+  const block = currentSelectedBlock();
+  if (!block) return;
+  block.locked = !block.locked;
+  updateWallTextControls();
+  renderTextBlocksLayer();
+  saveGeometryToSheet();
+});
+
 document.getElementById('deleteWallTextBtn').addEventListener('click', () => {
   if (!currentWallTextKey || !selectedTextBlockId) return;
   wallTexts[currentWallTextKey] = (wallTexts[currentWallTextKey] || []).filter(b => b.id !== selectedTextBlockId);
@@ -5674,6 +5943,7 @@ function serializeGeometryState() {
     disabledBaseFrames,
     frameUnmuted,
     manualPlants,
+    homeTextBlock,
   };
 }
 
@@ -5746,6 +6016,10 @@ function applyGeometryState(state) {
     if (typeof state.corridorFloorTint === 'string') { corridorFloorTint = state.corridorFloorTint; corridorFloorTintInput.value = corridorFloorTint; }
     if (typeof state.corridorWallTint === 'string') { corridorWallTint = state.corridorWallTint; corridorWallTintInput.value = corridorWallTint; }
     if (Array.isArray(state.manualPlants)) manualPlants = state.manualPlants;
+    if (state.homeTextBlock && typeof state.homeTextBlock === 'object') {
+      homeTextBlock = Object.assign({}, homeTextBlock, state.homeTextBlock);
+      renderHomeTextBlock();
+    }
 
     // Reflète l'état restauré dans les champs éditables du panneau, pour
     // qu'un "Appliquer" sans rien retoucher ne l'écrase pas.
@@ -5859,6 +6133,8 @@ function applyGeometryState(state) {
 // une fois que tout (frames{}, frameSelect, createFrame, frameMat…) est prêt.
 buildExtraRoom('room2', ROOM2_CENTER, ROOM2_SIZE);
 rebuildCorridor(true);
+applyAdminUnlockedUI(); // reflète l'état de déverrouillage (mémorisé sur cet appareil) dès le chargement
+renderHomeTextBlock(); // texte d'accueil par défaut (vide) avant que le Sheet ne réponde
 refreshPanelForSelection();
 loadGoogleSheetConfig();
 </script>
