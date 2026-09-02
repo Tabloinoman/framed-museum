@@ -109,33 +109,43 @@
     color:rgba(232,221,200,.35); pointer-events:none;
   }
   #homeTextBlock {
-    position:fixed; left:50%; bottom:60px; transform:translateX(-50%); z-index:21;
-    max-width:80vw; text-shadow:0 2px 8px rgba(0,0,0,.7); pointer-events:none; white-space:pre-wrap;
+    position:fixed; z-index:21; max-width:80vw;
+    text-shadow:0 2px 8px rgba(0,0,0,.7); white-space:pre-wrap; outline:none;
   }
   #homeTextBlock:empty { display:none; }
-  #editHomeTextBtn {
-    position:fixed; right:16px; bottom:14px; z-index:22; display:none;
-    background:rgba(20,17,14,.7); border:1px solid rgba(203,161,53,.5); color:#e8ddc8;
-    width:32px; height:32px; border-radius:50%; cursor:pointer; font-size:.85rem;
+  /* Même vide, reste visible et cliquable pour l'administrateur, pour
+     pouvoir commencer à taper dedans directement. */
+  body.adminUnlocked #homeTextBlock {
+    cursor:text; min-width:140px; min-height:1.4em;
+    border:1px dashed rgba(203,161,53,.4); padding:2px 6px;
   }
-  #editHomeTextBtn:hover { background:rgba(203,161,53,.22); }
-  body.adminUnlocked #editHomeTextBtn { display:block; }
+  body.adminUnlocked #homeTextBlock:empty { display:block; }
+  body.adminUnlocked #homeTextBlock:empty::before {
+    content:'Cliquez pour écrire ici…'; color:rgba(232,221,200,.4); font-size:.85rem; font-family:Georgia,serif;
+  }
+  #homeTextAdminControls {
+    position:fixed; z-index:22; display:none; gap:6px;
+  }
+  body.adminUnlocked #homeTextAdminControls { display:flex; }
+  #homeTextAdminControls span {
+    background:rgba(20,17,14,.8); border:1px solid rgba(203,161,53,.5); color:#e8ddc8;
+    width:28px; height:28px; border-radius:50%; cursor:pointer; font-size:.8rem;
+    display:flex; align-items:center; justify-content:center;
+  }
+  #homeTextDragHandle { cursor:move !important; }
+  #homeTextAdminControls span:hover { background:rgba(203,161,53,.28); }
 
   #homeTextEditor {
     position:fixed; inset:0; z-index:61; display:flex; align-items:center; justify-content:center;
     background:rgba(5,4,3,.82); opacity:0; pointer-events:none; transition:opacity .2s ease;
   }
   #homeTextEditor.open { opacity:1; pointer-events:auto; }
-  #homeTextEditor textarea {
-    background:#0a0908; border:1px solid #3a332c; color:#e8ddc8; padding:8px;
-    border-radius:4px; font-family:Georgia,serif; font-size:.85rem; resize:vertical;
-  }
   #homeTextEditor select {
     background:#0a0908; border:1px solid #3a332c; color:#e8ddc8; padding:7px; border-radius:4px; font-size:.85rem;
   }
   #homeTextEditor input[type=range] { width:100%; }
   #homeTextEditor input[type=color] { width:100%; height:32px; background:none; border:1px solid #3a332c; border-radius:4px; padding:2px; }
-  #homeTextEditor .toggleBtn.active { background:rgba(203,161,53,.35); border-color:#cba135; }
+  #homeTextEditor .toggleBtn.active, #homeTextEditor button.active { background:rgba(203,161,53,.35); border-color:#cba135; }
 
   #crosshair {
     position:fixed; top:50%; left:50%; width:6px; height:6px; margin:-3px 0 0 -3px;
@@ -581,15 +591,17 @@
     <span class="key">Échap</span> pour libérer le curseur.</p>
     <p class="small" id="blockerSmallHint">Visez un cadre et cliquez pour l'agrandir avec le son. Le bouton ⚙ (en haut à droite) reste toujours accessible.</p>
   </div>
-  <div id="homeTextBlock"></div>
-  <button id="editHomeTextBtn" title="Éditer ce texte">✏️</button>
-  <div id="versionTag">V1.9.0</div>
+  <div id="homeTextBlock" spellcheck="false"></div>
+  <div id="homeTextAdminControls">
+    <span id="homeTextDragHandle" title="Glisser pour déplacer">⠿</span>
+    <span id="homeTextStyleBtn" title="Style du texte">🎨</span>
+  </div>
+  <div id="versionTag">V1.9.1</div>
 </div>
 
 <div id="homeTextEditor">
   <div class="lockPromptInner" style="width:min(380px, 90vw);">
-    <label>Texte affiché sur la page d'accueil</label>
-    <textarea id="homeTextContent" rows="2" placeholder="Laissez vide pour ne rien afficher"></textarea>
+    <label>Style du texte d'accueil (le texte s'écrit directement sur la page)</label>
     <label>Police</label>
     <select id="homeTextFontFamily">
       <option value="Georgia, 'Times New Roman', serif">Georgia (classique)</option>
@@ -608,11 +620,16 @@
       <button class="secondary" id="homeTextBoldBtn"><b>G</b> Gras</button>
       <button class="secondary" id="homeTextItalicBtn"><i>I</i> Italique</button>
     </div>
+    <label>Alignement</label>
+    <div class="row">
+      <button class="secondary" id="homeTextAlignLeft" title="Aligné à gauche">⯇</button>
+      <button class="secondary" id="homeTextAlignCenter" title="Centré">☰</button>
+      <button class="secondary" id="homeTextAlignRight" title="Aligné à droite">⯈</button>
+    </div>
     <label>Couleur</label>
     <input type="color" id="homeTextColor" value="#e8ddc8">
     <div class="row">
-      <button class="secondary" id="homeTextEditorCancel">Fermer</button>
-      <button id="homeTextEditorApply">Appliquer</button>
+      <button id="homeTextEditorCancel">Fermer</button>
     </div>
   </div>
 </div>
@@ -3768,27 +3785,88 @@ lockPasswordInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') su
 // visible par tous les visiteurs, pas juste sur cet appareil.
 let homeTextBlock = {
   text: '', fontSize: 28, rotation: 0, fontFamily: "Georgia, 'Times New Roman', serif",
-  bold: false, italic: false, color: '#e8ddc8',
+  bold: false, italic: false, color: '#e8ddc8', align: 'center', x: 0.5, y: 0.82,
 };
 const homeTextBlockEl = document.getElementById('homeTextBlock');
+const homeTextAdminControls = document.getElementById('homeTextAdminControls');
+
+// Traduit l'alignement choisi en ancrage du bloc (pas seulement le texte à
+// l'intérieur) : "à gauche" doit pousser le bloc entier vers la gauche de
+// son point (x,y), pas juste aligner le texte dans une boîte centrée.
+function homeTextAnchorTransform() {
+  const map = { left: '0%', center: '-50%', right: '-100%' };
+  return `translate(${map[homeTextBlock.align] || '-50%'}, -50%) rotate(${homeTextBlock.rotation}deg)`;
+}
+
 function renderHomeTextBlock() {
-  homeTextBlockEl.textContent = homeTextBlock.text || '';
+  if (document.activeElement !== homeTextBlockEl) homeTextBlockEl.textContent = homeTextBlock.text || '';
   homeTextBlockEl.style.fontSize = homeTextBlock.fontSize + 'px';
   homeTextBlockEl.style.fontFamily = homeTextBlock.fontFamily;
   homeTextBlockEl.style.fontWeight = homeTextBlock.bold ? 'bold' : 'normal';
   homeTextBlockEl.style.fontStyle = homeTextBlock.italic ? 'italic' : 'normal';
   homeTextBlockEl.style.color = homeTextBlock.color;
-  homeTextBlockEl.style.transform = `translateX(-50%) rotate(${homeTextBlock.rotation}deg)`;
+  homeTextBlockEl.style.textAlign = homeTextBlock.align;
+  homeTextBlockEl.style.left = (homeTextBlock.x * 100) + '%';
+  homeTextBlockEl.style.top = (homeTextBlock.y * 100) + '%';
+  homeTextBlockEl.style.transform = homeTextAnchorTransform();
+  homeTextBlockEl.contentEditable = adminUnlocked ? 'true' : 'false';
+  positionHomeTextAdminControls();
 }
+
+// Petite barre (poignée de déplacement + bouton style) qui suit le bloc,
+// juste au-dessus de lui.
+function positionHomeTextAdminControls() {
+  const rect = homeTextBlockEl.getBoundingClientRect();
+  homeTextAdminControls.style.left = (rect.left + rect.width/2) + 'px';
+  homeTextAdminControls.style.top = (rect.top - 34) + 'px';
+  homeTextAdminControls.style.transform = 'translateX(-50%)';
+}
+window.addEventListener('resize', () => { if (adminUnlocked) positionHomeTextAdminControls(); });
+
 function updateHomeTextEditVisibility() {
-  // Rien de plus à faire ici : le bouton crayon se montre/cache via CSS
-  // (body.adminUnlocked) — cette fonction existe pour que d'éventuels
-  // ajouts futurs à la visibilité aient un seul endroit où vivre.
+  renderHomeTextBlock(); // reflète l'état d'édition (contentEditable) et repositionne la barre
 }
+
+// Écrit directement dans la page : sauvegarde en continu (avec un léger
+// délai, pour ne pas spammer le Sheet à chaque lettre tapée).
+let homeTextSaveTimeout = null;
+homeTextBlockEl.addEventListener('input', () => {
+  homeTextBlock.text = homeTextBlockEl.textContent;
+  clearTimeout(homeTextSaveTimeout);
+  homeTextSaveTimeout = setTimeout(saveGeometryToSheet, 1200);
+});
+homeTextBlockEl.addEventListener('blur', () => {
+  clearTimeout(homeTextSaveTimeout);
+  saveGeometryToSheet();
+});
+// Cliquer/taper dans le texte ne doit pas déclencher "entrer dans la galerie".
+homeTextBlockEl.addEventListener('pointerdown', (e) => { if (adminUnlocked) e.stopPropagation(); });
+homeTextBlockEl.addEventListener('click', (e) => { if (adminUnlocked) e.stopPropagation(); });
+
+// Glisser la poignée déplace le bloc (le texte lui-même reste dédié à
+// l'écriture directe, pas de confusion possible entre "cliquer pour écrire"
+// et "glisser pour déplacer").
+document.getElementById('homeTextDragHandle').addEventListener('pointerdown', (e) => {
+  if (!adminUnlocked) return;
+  e.stopPropagation();
+  e.preventDefault();
+  const move = (ev) => {
+    const x = Math.max(0.02, Math.min(0.98, ev.clientX / window.innerWidth));
+    const y = Math.max(0.05, Math.min(0.95, ev.clientY / window.innerHeight));
+    homeTextBlock.x = x; homeTextBlock.y = y;
+    renderHomeTextBlock();
+  };
+  const up = () => {
+    document.removeEventListener('pointermove', move);
+    document.removeEventListener('pointerup', up);
+    saveGeometryToSheet();
+  };
+  document.addEventListener('pointermove', move);
+  document.addEventListener('pointerup', up);
+});
 
 const homeTextEditor = document.getElementById('homeTextEditor');
 function openHomeTextEditor() {
-  document.getElementById('homeTextContent').value = homeTextBlock.text;
   document.getElementById('homeTextFontFamily').value = homeTextBlock.fontFamily;
   document.getElementById('homeTextFontSize').value = homeTextBlock.fontSize;
   document.getElementById('homeTextFontSizeValue').textContent = homeTextBlock.fontSize;
@@ -3797,34 +3875,58 @@ function openHomeTextEditor() {
   document.getElementById('homeTextBoldBtn').classList.toggle('active', homeTextBlock.bold);
   document.getElementById('homeTextItalicBtn').classList.toggle('active', homeTextBlock.italic);
   document.getElementById('homeTextColor').value = homeTextBlock.color;
+  ['Left','Center','Right'].forEach(a => {
+    document.getElementById('homeTextAlign'+a).classList.toggle('active', homeTextBlock.align === a.toLowerCase());
+  });
   homeTextEditor.classList.add('open');
 }
-function closeHomeTextEditor() { homeTextEditor.classList.remove('open'); }
-document.getElementById('editHomeTextBtn').addEventListener('click', openHomeTextEditor);
+function closeHomeTextEditor() { homeTextEditor.classList.remove('open'); saveGeometryToSheet(); }
+document.getElementById('homeTextStyleBtn').addEventListener('click', (e) => { e.stopPropagation(); openHomeTextEditor(); });
 document.getElementById('homeTextEditorCancel').addEventListener('click', closeHomeTextEditor);
 homeTextEditor.addEventListener('click', (e) => { if (e.target === homeTextEditor) closeHomeTextEditor(); });
 document.getElementById('homeTextFontSize').addEventListener('input', (e) => {
+  homeTextBlock.fontSize = parseFloat(e.target.value);
   document.getElementById('homeTextFontSizeValue').textContent = e.target.value;
+  renderHomeTextBlock();
 });
 document.getElementById('homeTextRotation').addEventListener('input', (e) => {
+  homeTextBlock.rotation = parseFloat(e.target.value);
   document.getElementById('homeTextRotationValue').textContent = e.target.value;
-});
-document.getElementById('homeTextBoldBtn').addEventListener('click', (e) => e.target.closest('button').classList.toggle('active'));
-document.getElementById('homeTextItalicBtn').addEventListener('click', (e) => e.target.closest('button').classList.toggle('active'));
-document.getElementById('homeTextEditorApply').addEventListener('click', () => {
-  homeTextBlock = {
-    text: document.getElementById('homeTextContent').value,
-    fontFamily: document.getElementById('homeTextFontFamily').value,
-    fontSize: parseFloat(document.getElementById('homeTextFontSize').value),
-    rotation: parseFloat(document.getElementById('homeTextRotation').value),
-    bold: document.getElementById('homeTextBoldBtn').classList.contains('active'),
-    italic: document.getElementById('homeTextItalicBtn').classList.contains('active'),
-    color: document.getElementById('homeTextColor').value,
-  };
   renderHomeTextBlock();
-  saveGeometryToSheet();
-  closeHomeTextEditor();
 });
+document.getElementById('homeTextFontFamily').addEventListener('change', (e) => {
+  homeTextBlock.fontFamily = e.target.value;
+  renderHomeTextBlock();
+});
+document.getElementById('homeTextColor').addEventListener('input', (e) => {
+  homeTextBlock.color = e.target.value;
+  renderHomeTextBlock();
+});
+document.getElementById('homeTextBoldBtn').addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  btn.classList.toggle('active');
+  homeTextBlock.bold = btn.classList.contains('active');
+  renderHomeTextBlock();
+});
+document.getElementById('homeTextItalicBtn').addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  btn.classList.toggle('active');
+  homeTextBlock.italic = btn.classList.contains('active');
+  renderHomeTextBlock();
+});
+['Left','Center','Right'].forEach(a => {
+  document.getElementById('homeTextAlign'+a).addEventListener('click', () => {
+    homeTextBlock.align = a.toLowerCase();
+    ['Left','Center','Right'].forEach(b => {
+      document.getElementById('homeTextAlign'+b).classList.toggle('active', a === b);
+    });
+    renderHomeTextBlock();
+    saveGeometryToSheet();
+  });
+});
+// Le reste (police/taille/rotation/couleur/gras/italique) se sauvegarde à
+// la fermeture (voir closeHomeTextEditor), pour ne pas spammer le Sheet à
+// chaque glissement de curseur.
 
 FRAME_CONFIGS.forEach(cfg => {
   const opt = document.createElement('option');
