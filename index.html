@@ -608,7 +608,7 @@
   <div id="homeTextAdminControls">
     <span id="homeTextStyleBtn" title="Style du texte">🎨</span>
   </div>
-  <div id="versionTag">V2.0.2</div>
+  <div id="versionTag">V2.0.3</div>
 </div>
 
 <div id="homeTextEditor">
@@ -2043,32 +2043,6 @@ function guardMat(color, extra) {
   return new THREE.MeshStandardMaterial(Object.assign({ color, roughness: 0.85, flatShading: true }, extra || {}));
 }
 
-// Boîte à vrais coins arrondis (Shape + Extrude, cœur de Three.js).
-function guardRoundedBox(w, h, depth, radius, material) {
-  radius = Math.min(radius, w/2, h/2);
-  const x = -w/2, y = -h/2;
-  const shape = new THREE.Shape();
-  shape.moveTo(x, y + radius);
-  shape.lineTo(x, y + h - radius);
-  shape.quadraticCurveTo(x, y + h, x + radius, y + h);
-  shape.lineTo(x + w - radius, y + h);
-  shape.quadraticCurveTo(x + w, y + h, x + w, y + h - radius);
-  shape.lineTo(x + w, y + radius);
-  shape.quadraticCurveTo(x + w, y, x + w - radius, y);
-  shape.lineTo(x + radius, y);
-  shape.quadraticCurveTo(x, y, x, y + radius);
-  const geo = new THREE.ExtrudeGeometry(shape, {
-    depth: depth, bevelEnabled: true,
-    bevelThickness: Math.min(radius*0.6, depth/2), bevelSize: Math.min(radius*0.6, depth/2),
-    bevelSegments: 3, curveSegments: 6,
-  });
-  geo.center();
-  const meshObj = new THREE.Mesh(geo, material || guardMat(0xffffff));
-  meshObj.castShadow = true;
-  meshObj.receiveShadow = true;
-  return meshObj;
-}
-
 function buildGuardChairMesh() {
   const group = new THREE.Group();
   const woodMat = guardMat(0x5a4632);
@@ -2080,10 +2054,12 @@ function buildGuardChairMesh() {
   back.position.set(0, 0.72, -0.2);
   back.castShadow = true;
   group.add(back);
+  // Les 4 pieds ne portent pas d'ombre : leur ombre est fine et peu visible,
+  // mais 4 ombres portées en plus par personnage, ça compte vite sur les
+  // performances (beaucoup de gardiens/objets = beaucoup d'ombres à calculer).
   [[-0.17,-0.19],[0.17,-0.19],[-0.17,0.19],[0.17,0.19]].forEach(([x,z]) => {
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.46, 6), woodMat);
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.46, 5), woodMat);
     leg.position.set(x, 0.23, z);
-    leg.castShadow = true;
     group.add(leg);
   });
   return group;
@@ -2096,15 +2072,18 @@ function buildMuseumGuardMesh() {
   const dark = guardMat(0x1a1a1a);
   const shinColor = guardMat(0x24241f);
 
-  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 0.42, 12), uniform);
+  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 0.42, 10), uniform);
   torso.castShadow = true; torso.receiveShadow = true;
   torso.position.y = 0.79;
   group.add(torso);
 
-  const tie = guardRoundedBox(0.05, 0.28, 0.025, 0.015, guardMat(0x7a2a2a));
+  // Cravate : simple boîte plutôt que la version à coins arrondis (Shape +
+  // Extrude + biseau), bien plus coûteuse à générer pour un détail aussi
+  // petit — invisible à l'œil sur un élément de cette taille.
+  const tie = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.28, 0.025), guardMat(0x7a2a2a));
   tie.position.set(0, 0.82, 0.14);
-  group.add(tie);
-  const badge = new THREE.Mesh(new THREE.SphereGeometry(0.02, 8, 6), guardMat(0xcba135, { metalness: 0.6, roughness: 0.3 }));
+  group.add(tie); // pas d'ombre portée : détail trop petit pour que ça se voie
+  const badge = new THREE.Mesh(new THREE.SphereGeometry(0.02, 6, 5), guardMat(0xcba135, { metalness: 0.6, roughness: 0.3 }));
   badge.position.set(-0.1, 0.9, 0.12);
   group.add(badge);
 
@@ -2112,23 +2091,27 @@ function buildMuseumGuardMesh() {
   headGroup.position.y = 1.08;
   group.add(headGroup);
 
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.105, 14, 11), skin);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.105, 12, 9), skin);
   head.castShadow = true;
   headGroup.add(head);
 
+  // Yeux : trop petits pour justifier une ombre portée chacun.
   [-1, 1].forEach(side => {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.012, 8, 6), guardMat(0x201812));
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.012, 6, 5), guardMat(0x201812));
     eye.position.set(side*0.035, 0.01, 0.098);
     headGroup.add(eye);
   });
 
-  const capTop = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.115, 0.1, 14), dark);
+  // Casquette : seul le dessus porte une ombre (silhouette principale) — le
+  // bandeau et la visière sont fins et se remarquent à peine dans l'ombre.
+  const capTop = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.115, 0.1, 12), dark);
   capTop.position.y = 0.1;
+  capTop.castShadow = true;
   headGroup.add(capTop);
-  const capBand = new THREE.Mesh(new THREE.CylinderGeometry(0.118, 0.118, 0.03, 14), guardMat(0xcba135));
+  const capBand = new THREE.Mesh(new THREE.CylinderGeometry(0.118, 0.118, 0.03, 12), guardMat(0xcba135));
   capBand.position.y = 0.05;
   headGroup.add(capBand);
-  const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.012, 14), dark);
+  const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.012, 12), dark);
   brim.position.set(0, 0.03, 0.06);
   headGroup.add(brim);
 
@@ -2138,7 +2121,7 @@ function buildMuseumGuardMesh() {
     shoulderPivot.position.set(side*0.19, 0.9, 0.06);
     group.add(shoulderPivot);
 
-    const upperArm = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.04, 0.24, 6), uniform);
+    const upperArm = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.04, 0.24, 5), uniform);
     upperArm.position.set(0, -0.12, 0);
     upperArm.castShadow = true;
     shoulderPivot.add(upperArm);
@@ -2147,14 +2130,14 @@ function buildMuseumGuardMesh() {
     elbowPivot.position.set(0, -0.24, 0);
     shoulderPivot.add(elbowPivot);
 
-    const lowerArm = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.035, 0.24, 6), uniform);
+    const lowerArm = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.035, 0.24, 5), uniform);
     lowerArm.position.set(0, -0.12, 0);
     lowerArm.castShadow = true;
     elbowPivot.add(lowerArm);
 
-    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.042, 6, 5), skin);
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.042, 5, 4), skin);
     hand.position.set(0, -0.26, 0);
-    elbowPivot.add(hand);
+    elbowPivot.add(hand); // pas d'ombre : petite pièce en bout de chaîne, peu visible
 
     shoulderPivot.rotation.z = side * 0.35;
     elbowPivot.rotation.x = -1.1;
@@ -2163,12 +2146,12 @@ function buildMuseumGuardMesh() {
   });
 
   [-1, 1].forEach(side => {
-    const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.06, 0.38, 7), uniform);
+    const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.06, 0.38, 6), uniform);
     thigh.rotation.x = Math.PI/2;
     thigh.position.set(side*0.1, 0.5, 0.19);
     thigh.castShadow = true;
     group.add(thigh);
-    const shin = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.045, 0.4, 7), shinColor);
+    const shin = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.045, 0.4, 6), shinColor);
     shin.position.set(side*0.1, 0.23, 0.37);
     shin.castShadow = true;
     group.add(shin);
@@ -2176,7 +2159,6 @@ function buildMuseumGuardMesh() {
     shoe.rotation.x = Math.PI/2;
     shoe.scale.set(1, 1, 1.6);
     shoe.position.set(side*0.1, 0.04, 0.44);
-    shoe.castShadow = true;
     group.add(shoe);
   });
 
