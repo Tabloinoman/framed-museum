@@ -618,7 +618,7 @@
   <div id="homeTextAdminControls">
     <span id="homeTextStyleBtn" title="Style du texte">🎨</span>
   </div>
-  <div id="versionTag">V2.2.2</div>
+  <div id="versionTag">V2.3.0</div>
 </div>
 
 <div id="homeTextEditor">
@@ -1645,21 +1645,31 @@ function buildDoorMesh(x, z, rotY, target, group) {
 // Construit une salle annexe complète : sol/plafond/murs (style propre à
 // CETTE salle), lumière d'ambiance colorée, porte de retour, et trois cadres
 // vidéo agrandis (un par mur plein — Nord, Est, Ouest ; le Sud porte la porte).
-function buildExtraRoom(id, center, size, palette) {
+// Enregistrement léger : la salle "existe" (position, taille, palette
+// connues — toutes les vérifications d'existence dans le reste du code
+// continuent de fonctionner sans changement), mais AUCUNE géométrie 3D
+// n'est créée. C'est buildRoomGeometry() (plus bas) qui fait ce travail
+// lourd, appelée seulement au moment où le joueur franchit vraiment la
+// porte — voir goThroughDoor().
+function registerRoomMeta(id, center, size, palette) {
   palette = palette || ROOM_PALETTES[0];
+  EXTRA_ROOMS[id] = { center, size, palette, built: false };
+}
+
+// Construction complète de la géométrie (sol, plafond, murs, porte,
+// plantes) — appelée une seule fois, la première fois qu'on entre dans la
+// salle. Suppose que registerRoomMeta(id, ...) a déjà été appelé (le centre,
+// la taille et la palette sont lus depuis EXTRA_ROOMS[id]).
+function buildRoomGeometry(id) {
+  const meta = EXTRA_ROOMS[id];
+  if (!meta || meta.built) return;
+  const { center, size, palette } = meta;
   const group = new THREE.Group();
   scene.add(group);
   const cx = center.x, cz = center.z;
 
   const floorTex = makeRoomFloorTexture(palette);
   const wallTex = makeRoomWallTexture(palette);
-
-  // Enregistrée ICI (avant de construire les murs), avec la palette ET la
-  // texture de mur déjà calculées : un mur qui porte du texte en a besoin
-  // pendant sa PROPRE construction (voir drawWallBackgroundPattern), donc
-  // toutes les deux doivent déjà être là — sinon il perd sa texture (palette
-  // par défaut ou fond vide selon le cas).
-  EXTRA_ROOMS[id] = { center, size, palette, wallTex };
 
   const floorMat = new THREE.MeshStandardMaterial({ map: floorTex.clone(), roughness:0.5, metalness:0.08, side: THREE.DoubleSide });
   floorMat.map.repeat.set(2.5, 2.5); floorMat.map.needsUpdate = true;
@@ -1689,9 +1699,9 @@ function buildExtraRoom(id, center, size, palette) {
     wall.receiveShadow = true;
     wall.userData.wallKey = wallKey;
     wallMeshesBySide[n.k] = wall;
-    // Pas de push ici : rebuildCorridor() (toujours appelée juste après,
-    // partout où buildExtraRoom l'est) réenregistre les murs des salles de
-    // façon centralisée — l'ajouter aussi ici créerait des doublons.
+    // Pas de push ici : rebuildCorridor() (toujours appelée juste après la
+    // toute première construction d'une salle, voir goThroughDoor) réenregistre
+    // les murs des salles de façon centralisée — l'ajouter aussi ici créerait des doublons.
     group.add(wall);
   });
   const southWallMat = new THREE.MeshStandardMaterial({ map: wallTex.clone(), roughness:0.85, side: THREE.DoubleSide });
@@ -1714,22 +1724,57 @@ function buildExtraRoom(id, center, size, palette) {
   const doorInRoom = buildDoorMesh(cx, cz + size/2 - 0.05, Math.PI, 'corridor', group);
   doorMeshes.push(doorInRoom);
 
-  // Les cadres Nord/Est/Ouest ne sont plus créés automatiquement : on les
-  // ajoute désormais un par un, à la demande, en sélectionnant le mur dans
-  // l'éditeur de géométrie (case "Activer un cadre ici").
-
   // Plantes placées manuellement pour CETTE salle (même mécanisme que le couloir).
   manualPlants.filter(p => p.kind === 'room' && p.roomId === id).forEach(p => {
     buildPlantAt(p.x, p.z, group);
   });
 
-  EXTRA_ROOMS[id] = { center, size, doorInRoom, group, palette, floorTex, wallTex, wallMeshesBySide };
+  Object.assign(EXTRA_ROOMS[id], { doorInRoom, group, floorTex, wallTex, wallMeshesBySide, built: true });
+
+  // Recrée les cadres ajoutés manuellement sur les murs de CETTE salle — ils
+  // ne pouvaient pas être créés avant, faute de salle où les accrocher.
+  Object.keys(manualFrameRegistry).forEach(frameId => {
+    if (frames[frameId]) return; // déjà présent
+    const info = manualFrameRegistry[frameId];
+    if (!info || info.kind !== 'room' || info.roomId !== id) return;
+    const positions = {
+      N: { x: cx, z: cz - size/2, inward: {x:0,z:1} },
+      E: { x: cx + size/2, z: cz, inward: {x:-1,z:0} },
+      W: { x: cx - size/2, z: cz, inward: {x:1,z:0} },
+    };
+    const pos = positions[info.side];
+    if (!pos) return;
+    createFrame(frameId, info.label || frameId, pos.x, pos.z, pos.inward, FRAME_MAX_W*1.6, FRAME_MAX_H*1.6);
+  });
+
+  // Charge maintenant une éventuelle texture personnalisée qui attendait que
+  // la salle existe (voir applyGeometryState → room.pendingFloorTexUrl / pendingWallTexUrl).
+  if (meta.pendingFloorTexUrl) {
+    const url = meta.pendingFloorTexUrl;
+    delete meta.pendingFloorTexUrl;
+    loadImageTextureFromURL(url, tex => { setRoomCustomTexture(id, 'floor', tex); EXTRA_ROOMS[id].floorTexUrl = url; });
+  }
+  if (meta.pendingWallTexUrl) {
+    const url = meta.pendingWallTexUrl;
+    delete meta.pendingWallTexUrl;
+    loadImageTextureFromURL(url, tex => { setRoomCustomTexture(id, 'wall', tex); EXTRA_ROOMS[id].wallTexUrl = url; });
+  }
+
   return doorInRoom;
+}
+
+// Conservée pour compatibilité : construit tout d'un coup (métadonnées +
+// géométrie), utile pour un appel ponctuel hors du flux "chargement à
+// l'entrée" (ex. reconstruction complète après un changement de palette).
+function buildExtraRoom(id, center, size, palette) {
+  registerRoomMeta(id, center, size, palette);
+  return buildRoomGeometry(id);
 }
 
 function disposeRoom(id) {
   const room = EXTRA_ROOMS[id];
   if (!room) return;
+  if (!room.built) { delete EXTRA_ROOMS[id]; return; } // jamais construite : rien à nettoyer côté scène
   room.group.traverse(obj => {
     if (obj.isMesh) {
       obj.geometry.dispose();
@@ -1774,6 +1819,14 @@ function setRoomPaletteFor(id, paletteId) {
 function setRoomCustomTexture(id, kind, tex) {
   const room = EXTRA_ROOMS[id];
   if (!room) return;
+  if (!room.built) {
+    // Pas encore construite : rien à mettre à jour visuellement pour
+    // l'instant — l'appelant mémorise l'URL en attente (room.pendingFloorTexUrl
+    // / room.pendingWallTexUrl), rechargée au moment de la construction (voir
+    // buildRoomGeometry), plutôt que de planter en accédant à des murs qui
+    // n'existent pas encore.
+    return;
+  }
   // Mis à jour EN PREMIER : un mur avec texte régénère sa texture à partir de
   // cette référence (voir drawWallBackgroundPattern → makeWallTextureWithText
   // ci-dessous), donc elle doit déjà être la bonne avant de les retraiter.
@@ -1873,7 +1926,7 @@ function ensurePocketRoomFor(key) {
   const idx = pocketRoomSlots[key];
   const gx = idx % 6, gy = Math.floor(idx / 6);
   const palette = ROOM_PALETTES[idx % ROOM_PALETTES.length]; // variété par défaut, modifiable ensuite
-  buildExtraRoom(key, { x: 500 + gx*30, z: 500 + gy*30 }, 14, palette);
+  registerRoomMeta(key, { x: 500 + gx*30, z: 500 + gy*30 }, 14, palette);
   pocketRoomIds.add(key);
 }
 
@@ -2892,9 +2945,12 @@ function rebuildCorridor(force) {
   });
 
   // Les salles annexes (salle 2, salle 3, salles de poche) restent toujours
-  // praticables, et leur porte de retour doit être ré-ajoutée à chaque fois
-  // (le tableau doorMeshes est repeuplé intégralement à chaque reconstruction).
+  // praticables UNE FOIS CONSTRUITES, et leur porte de retour doit être
+  // ré-ajoutée à chaque fois (le tableau doorMeshes est repeuplé intégralement
+  // à chaque reconstruction). Une salle enregistrée mais pas encore visitée
+  // (chargement à la demande) n'a ni porte ni géométrie : on l'ignore ici.
   Object.values(EXTRA_ROOMS).forEach(room => {
+    if (!room.built) return;
     doorMeshes.push(room.doorInRoom);
     walkableBoxes.push({
       minX: room.center.x - room.size/2 - MARGIN, maxX: room.center.x + room.size/2 + MARGIN,
@@ -3671,6 +3727,14 @@ function goThroughDoor(target) {
   } else {
     lastEnteredRoomId = target;
     const room = EXTRA_ROOMS[target];
+    if (room && !room.built) {
+      // Première visite : la géométrie de la salle n'existe pas encore,
+      // on la construit maintenant (juste avant d'y téléporter le joueur),
+      // puis on reconstruit le couloir pour que tout reste cohérent (murs
+      // cliquables, objets photo, carte, etc).
+      buildRoomGeometry(target);
+      rebuildCorridor();
+    }
     yawObject.position.set(room.center.x, EYE_HEIGHT, room.center.z + room.size/2 - 2.5);
     yaw = 0; // face vers l'intérieur de la salle (-Z), donc à l'opposé de la porte qu'on vient de franchir
   }
@@ -5756,7 +5820,7 @@ document.getElementById('addTurn').addEventListener('click', () => {
 const addRoomBtn = document.getElementById('addRoomBtn');
 addRoomBtn.addEventListener('click', () => {
   if (!EXTRA_ROOMS.room3) {
-    buildExtraRoom('room3', ROOM3_CENTER, ROOM3_SIZE);
+    registerRoomMeta('room3', ROOM3_CENTER, ROOM3_SIZE);
     addRoomBtn.textContent = '✓ Salle ajoutée — porte au bout du couloir';
     addRoomBtn.disabled = true;
   }
@@ -6517,10 +6581,14 @@ let restoringGeometry = false; // évite de re-sauvegarder pendant qu'on restaur
 function serializeGeometryState() {
   const rooms = {};
   Object.keys(EXTRA_ROOMS).forEach(id => {
+    const r = EXTRA_ROOMS[id];
     rooms[id] = {
-      paletteId: EXTRA_ROOMS[id].palette.id,
-      floorTexUrl: EXTRA_ROOMS[id].floorTexUrl || null,
-      wallTexUrl: EXTRA_ROOMS[id].wallTexUrl || null,
+      paletteId: r.palette.id,
+      // Repli sur l'URL "en attente" si la salle n'a encore jamais été
+      // construite (voir room.pendingFloorTexUrl/pendingWallTexUrl) : sinon,
+      // une sauvegarde déclenchée avant la première visite perdrait cette URL.
+      floorTexUrl: r.floorTexUrl || r.pendingFloorTexUrl || null,
+      wallTexUrl: r.wallTexUrl || r.pendingWallTexUrl || null,
     };
   });
   return {
@@ -6625,7 +6693,7 @@ function applyGeometryState(state) {
     syncDraftFromApplied();
 
     if (state.hasRoom3 && !EXTRA_ROOMS.room3) {
-      buildExtraRoom('room3', ROOM3_CENTER, ROOM3_SIZE);
+      registerRoomMeta('room3', ROOM3_CENTER, ROOM3_SIZE);
     }
 
     rebuildCorridor(true); // fait apparaître les salles de poche (via manualEdges) avec leur style par défaut
@@ -6637,20 +6705,26 @@ function applyGeometryState(state) {
       Object.keys(state.rooms).forEach(id => {
         const room = EXTRA_ROOMS[id];
         const wanted = state.rooms[id] && state.rooms[id].paletteId;
-        if (room && wanted && room.palette.id !== wanted) {
-          setRoomPaletteFor(id, wanted); // remplace le style par défaut par celui choisi manuellement
+        if (!room || !wanted || room.palette.id === wanted) return;
+        const p = ROOM_PALETTES.find(x => x.id === wanted);
+        if (!p) return;
+        if (room.built) {
+          setRoomPaletteFor(id, wanted); // déjà construite : reconstruit avec le bon style
+        } else {
+          room.palette = p; // pas encore construite : juste mémoriser, le bon style sera utilisé à la construction
         }
       });
     }
 
-    // Salles déjà construites AVANT que manualPlants n'arrive (room2 dès le
-    // tout premier chargement, notamment) : leurs plantes n'apparaissent pas
-    // automatiquement tant qu'on ne les reconstruit pas — contrairement au
-    // couloir et aux salles de poche, déjà à jour via rebuildCorridor() ci-dessus.
+    // Filet de sécurité pour une salle qui serait déjà construite à ce stade
+    // (visite très rapide avant même la fin du chargement) : avec le
+    // chargement à la demande, une salle pas encore construite recevra de
+    // toute façon ses plantes correctement au moment de sa construction —
+    // pas besoin (et surtout pas souhaitable) de la construire ici pour ça.
     const roomIdsWithPlants = new Set(manualPlants.filter(p => p.kind === 'room').map(p => p.roomId));
     roomIdsWithPlants.forEach(roomId => {
       const room = EXTRA_ROOMS[roomId];
-      if (room) { disposeRoom(roomId); buildExtraRoom(roomId, room.center, room.size, room.palette); }
+      if (room && room.built) { disposeRoom(roomId); buildExtraRoom(roomId, room.center, room.size, room.palette); }
     });
 
     // Textures personnalisées depuis une URL (partageables, contrairement à
@@ -6678,16 +6752,27 @@ function applyGeometryState(state) {
         const info = state.rooms[id];
         if (!room || !info) return;
         if (info.floorTexUrl) {
-          loadImageTextureFromURL(info.floorTexUrl, tex => {
-            setRoomCustomTexture(id, 'floor', tex);
-            room.floorTexUrl = info.floorTexUrl;
-          });
+          if (room.built) {
+            loadImageTextureFromURL(info.floorTexUrl, tex => {
+              setRoomCustomTexture(id, 'floor', tex);
+              room.floorTexUrl = info.floorTexUrl;
+            });
+          } else {
+            // Pas encore construite : pas besoin de télécharger quoi que ce
+            // soit tant que la salle n'est pas visitée — juste mémorisé pour
+            // être chargé au moment de sa construction (voir buildRoomGeometry).
+            room.pendingFloorTexUrl = info.floorTexUrl;
+          }
         }
         if (info.wallTexUrl) {
-          loadImageTextureFromURL(info.wallTexUrl, tex => {
-            setRoomCustomTexture(id, 'wall', tex);
-            room.wallTexUrl = info.wallTexUrl;
-          });
+          if (room.built) {
+            loadImageTextureFromURL(info.wallTexUrl, tex => {
+              setRoomCustomTexture(id, 'wall', tex);
+              room.wallTexUrl = info.wallTexUrl;
+            });
+          } else {
+            room.pendingWallTexUrl = info.wallTexUrl;
+          }
         }
       });
     }
@@ -6727,10 +6812,12 @@ function applyGeometryState(state) {
   }
 }
 
-// Construit la deuxième salle, puis le couloir (et les cadres des tronçons
-// ajoutés, et la porte reliant les deux) — appelé ici, tout en bas du script,
-// une fois que tout (frames{}, frameSelect, createFrame, frameMat…) est prêt.
-buildExtraRoom('room2', ROOM2_CENTER, ROOM2_SIZE);
+// Enregistre la deuxième salle (métadonnées seulement — sa géométrie se
+// construit à la demande, la première fois qu'on y entre, voir
+// goThroughDoor), puis construit le couloir (et les cadres des tronçons
+// ajoutés, et la porte menant à cette salle) — appelé ici, tout en bas du
+// script, une fois que tout (frames{}, frameSelect, createFrame, frameMat…) est prêt.
+registerRoomMeta('room2', ROOM2_CENTER, ROOM2_SIZE);
 rebuildCorridor(true);
 applyAdminUnlockedUI(); // reflète l'état de déverrouillage (mémorisé sur cet appareil) dès le chargement
 renderHomeTextBlock(); // texte d'accueil par défaut (vide) avant que le Sheet ne réponde
