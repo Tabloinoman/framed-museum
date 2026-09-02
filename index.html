@@ -114,14 +114,16 @@
   }
   #homeTextBlock:empty { display:none; }
   /* Même vide, reste visible et cliquable pour l'administrateur, pour
-     pouvoir commencer à taper dedans directement. */
+     pouvoir commencer à taper dedans directement. Le curseur "move" indique
+     que le texte se déplace au clic simple — double-clic pour écrire. */
   body.adminUnlocked #homeTextBlock {
-    cursor:text; min-width:140px; min-height:1.4em;
+    cursor:move; min-width:140px; min-height:1.4em;
     border:1px dashed rgba(203,161,53,.4); padding:2px 6px;
   }
+  body.adminUnlocked #homeTextBlock[contenteditable="true"] { cursor:text; }
   body.adminUnlocked #homeTextBlock:empty { display:block; }
   body.adminUnlocked #homeTextBlock:empty::before {
-    content:'Cliquez pour écrire ici…'; color:rgba(232,221,200,.4); font-size:.85rem; font-family:Georgia,serif;
+    content:'Double-cliquez pour écrire ici…'; color:rgba(232,221,200,.4); font-size:.85rem; font-family:Georgia,serif;
   }
   #homeTextAdminControls {
     position:fixed; z-index:22; display:none; gap:6px;
@@ -132,14 +134,25 @@
     width:28px; height:28px; border-radius:50%; cursor:pointer; font-size:.8rem;
     display:flex; align-items:center; justify-content:center;
   }
-  #homeTextDragHandle { cursor:move !important; }
   #homeTextAdminControls span:hover { background:rgba(203,161,53,.28); }
 
+  /* Petite fenêtre flottante et déplaçable (pas un plein écran modal) — se
+     déplace en glissant son en-tête, reste ouverte pendant qu'on ajuste le
+     style, pour voir le résultat en direct sur le texte en dessous. */
   #homeTextEditor {
-    position:fixed; inset:0; z-index:61; display:flex; align-items:center; justify-content:center;
-    background:rgba(5,4,3,.82); opacity:0; pointer-events:none; transition:opacity .2s ease;
+    position:fixed; top:80px; right:24px; z-index:61;
+    background:#141110; border:1px solid rgba(203,161,53,.5); border-radius:8px;
+    box-shadow:0 20px 60px rgba(0,0,0,.6); opacity:0; pointer-events:none; transition:opacity .15s ease;
   }
   #homeTextEditor.open { opacity:1; pointer-events:auto; }
+  #homeTextEditorHeader {
+    cursor:move; user-select:none; padding:9px 12px; font-size:.78rem; letter-spacing:.04em;
+    color:#cba135; border-bottom:1px solid rgba(203,161,53,.3);
+    display:flex; align-items:center; justify-content:space-between; border-radius:8px 8px 0 0;
+    background:rgba(203,161,53,.08);
+  }
+  #homeTextEditorClose { cursor:pointer; color:#a89a82; padding:0 2px; }
+  #homeTextEditorClose:hover { color:#e8ddc8; }
   #homeTextEditor select {
     background:#0a0908; border:1px solid #3a332c; color:#e8ddc8; padding:7px; border-radius:4px; font-size:.85rem;
   }
@@ -593,15 +606,14 @@
   </div>
   <div id="homeTextBlock" spellcheck="false"></div>
   <div id="homeTextAdminControls">
-    <span id="homeTextDragHandle" title="Glisser pour déplacer">⠿</span>
     <span id="homeTextStyleBtn" title="Style du texte">🎨</span>
   </div>
-  <div id="versionTag">V1.9.1</div>
+  <div id="versionTag">V1.9.2</div>
 </div>
 
 <div id="homeTextEditor">
-  <div class="lockPromptInner" style="width:min(380px, 90vw);">
-    <label>Style du texte d'accueil (le texte s'écrit directement sur la page)</label>
+  <div id="homeTextEditorHeader">⠿ Style du texte <span id="homeTextEditorClose" title="Fermer">✕</span></div>
+  <div class="lockPromptInner" id="homeTextEditorBody" style="width:min(300px, 88vw); border:none; box-shadow:none; padding:12px;">
     <label>Police</label>
     <select id="homeTextFontFamily">
       <option value="Georgia, 'Times New Roman', serif">Georgia (classique)</option>
@@ -628,9 +640,6 @@
     </div>
     <label>Couleur</label>
     <input type="color" id="homeTextColor" value="#e8ddc8">
-    <div class="row">
-      <button id="homeTextEditorCancel">Fermer</button>
-    </div>
   </div>
 </div>
 
@@ -3809,12 +3818,13 @@ function renderHomeTextBlock() {
   homeTextBlockEl.style.left = (homeTextBlock.x * 100) + '%';
   homeTextBlockEl.style.top = (homeTextBlock.y * 100) + '%';
   homeTextBlockEl.style.transform = homeTextAnchorTransform();
-  homeTextBlockEl.contentEditable = adminUnlocked ? 'true' : 'false';
+  // Pas éditable par défaut, même en admin — un simple clic sert à déplacer
+  // le bloc (voir plus bas), double-clic pour passer en mode écriture.
+  if (!adminUnlocked) homeTextBlockEl.contentEditable = 'false';
   positionHomeTextAdminControls();
 }
 
-// Petite barre (poignée de déplacement + bouton style) qui suit le bloc,
-// juste au-dessus de lui.
+// Petite barre (juste le bouton style désormais) qui suit le bloc, juste au-dessus de lui.
 function positionHomeTextAdminControls() {
   const rect = homeTextBlockEl.getBoundingClientRect();
   homeTextAdminControls.style.left = (rect.left + rect.width/2) + 'px';
@@ -3824,7 +3834,7 @@ function positionHomeTextAdminControls() {
 window.addEventListener('resize', () => { if (adminUnlocked) positionHomeTextAdminControls(); });
 
 function updateHomeTextEditVisibility() {
-  renderHomeTextBlock(); // reflète l'état d'édition (contentEditable) et repositionne la barre
+  renderHomeTextBlock(); // repositionne la barre, applique l'affichage selon adminUnlocked
 }
 
 // Écrit directement dans la page : sauvegarde en continu (avec un léger
@@ -3835,22 +3845,45 @@ homeTextBlockEl.addEventListener('input', () => {
   clearTimeout(homeTextSaveTimeout);
   homeTextSaveTimeout = setTimeout(saveGeometryToSheet, 1200);
 });
+// Un <div>/<br> inséré par le navigateur à l'appui sur Entrée (comportement
+// par défaut d'un contentEditable) ne laisse AUCUNE trace dans .textContent
+// — le texte revient donc sur une seule ligne dès qu'on relit le contenu
+// (au changement de style, au verrouillage, etc). On insère un vrai
+// caractère de saut de ligne à la place, que .textContent conserve bien.
+homeTextBlockEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    document.execCommand('insertText', false, '\n');
+  }
+});
 homeTextBlockEl.addEventListener('blur', () => {
+  homeTextBlockEl.contentEditable = 'false'; // reclic simple = déplacer, pas resélectionner du texte
   clearTimeout(homeTextSaveTimeout);
   saveGeometryToSheet();
 });
-// Cliquer/taper dans le texte ne doit pas déclencher "entrer dans la galerie".
-homeTextBlockEl.addEventListener('pointerdown', (e) => { if (adminUnlocked) e.stopPropagation(); });
-homeTextBlockEl.addEventListener('click', (e) => { if (adminUnlocked) e.stopPropagation(); });
 
-// Glisser la poignée déplace le bloc (le texte lui-même reste dédié à
-// l'écriture directe, pas de confusion possible entre "cliquer pour écrire"
-// et "glisser pour déplacer").
-document.getElementById('homeTextDragHandle').addEventListener('pointerdown', (e) => {
+// Double-clic = passe en mode écriture (place le curseur là où on a cliqué,
+// comportement natif du navigateur une fois contentEditable activé).
+homeTextBlockEl.addEventListener('dblclick', (e) => {
   if (!adminUnlocked) return;
   e.stopPropagation();
+  homeTextBlockEl.contentEditable = 'true';
+  homeTextBlockEl.focus();
+});
+
+// Clic simple + glisser = déplace le bloc (uniquement si on n'est PAS déjà
+// en train d'écrire dedans — sinon on laisse le navigateur gérer la
+// sélection/le positionnement du curseur normalement).
+homeTextBlockEl.addEventListener('pointerdown', (e) => {
+  if (!adminUnlocked) return;
+  e.stopPropagation();
+  if (homeTextBlockEl.contentEditable === 'true') return;
   e.preventDefault();
+  const startX = e.clientX, startY = e.clientY;
+  let dragged = false;
   const move = (ev) => {
+    if (!dragged && Math.hypot(ev.clientX - startX, ev.clientY - startY) < 4) return;
+    dragged = true;
     const x = Math.max(0.02, Math.min(0.98, ev.clientX / window.innerWidth));
     const y = Math.max(0.05, Math.min(0.95, ev.clientY / window.innerHeight));
     homeTextBlock.x = x; homeTextBlock.y = y;
@@ -3859,11 +3892,12 @@ document.getElementById('homeTextDragHandle').addEventListener('pointerdown', (e
   const up = () => {
     document.removeEventListener('pointermove', move);
     document.removeEventListener('pointerup', up);
-    saveGeometryToSheet();
+    if (dragged) saveGeometryToSheet();
   };
   document.addEventListener('pointermove', move);
   document.addEventListener('pointerup', up);
 });
+homeTextBlockEl.addEventListener('click', (e) => { if (adminUnlocked) e.stopPropagation(); });
 
 const homeTextEditor = document.getElementById('homeTextEditor');
 function openHomeTextEditor() {
@@ -3882,8 +3916,28 @@ function openHomeTextEditor() {
 }
 function closeHomeTextEditor() { homeTextEditor.classList.remove('open'); saveGeometryToSheet(); }
 document.getElementById('homeTextStyleBtn').addEventListener('click', (e) => { e.stopPropagation(); openHomeTextEditor(); });
-document.getElementById('homeTextEditorCancel').addEventListener('click', closeHomeTextEditor);
-homeTextEditor.addEventListener('click', (e) => { if (e.target === homeTextEditor) closeHomeTextEditor(); });
+document.getElementById('homeTextEditorClose').addEventListener('click', closeHomeTextEditor);
+
+// La petite fenêtre de style se déplace en glissant son en-tête — reste
+// ouverte pendant qu'on ajuste, pour voir le résultat en direct.
+document.getElementById('homeTextEditorHeader').addEventListener('pointerdown', (e) => {
+  if (e.target.id === 'homeTextEditorClose') return;
+  e.preventDefault();
+  const rect = homeTextEditor.getBoundingClientRect();
+  const offX = e.clientX - rect.left, offY = e.clientY - rect.top;
+  homeTextEditor.style.right = 'auto'; // bascule d'un ancrage "right" à un positionnement "left" explicite
+  const move = (ev) => {
+    homeTextEditor.style.left = Math.max(0, ev.clientX - offX) + 'px';
+    homeTextEditor.style.top = Math.max(0, ev.clientY - offY) + 'px';
+  };
+  const up = () => {
+    document.removeEventListener('pointermove', move);
+    document.removeEventListener('pointerup', up);
+  };
+  document.addEventListener('pointermove', move);
+  document.addEventListener('pointerup', up);
+});
+
 document.getElementById('homeTextFontSize').addEventListener('input', (e) => {
   homeTextBlock.fontSize = parseFloat(e.target.value);
   document.getElementById('homeTextFontSizeValue').textContent = e.target.value;
