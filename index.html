@@ -172,18 +172,25 @@
   }
 
   #guardSpeechBubble {
-    position:fixed; top:38%; left:50%; transform:translate(-50%, 10px);
-    max-width:min(420px, 80vw); z-index:15; pointer-events:none;
-    background:#f4f0e6; color:#241f1a; font-family:Georgia,serif; font-size:.95rem;
-    padding:12px 18px; border-radius:10px; text-align:center; line-height:1.4;
-    box-shadow:0 8px 24px rgba(0,0,0,.5);
-    opacity:0; transition: opacity .25s ease, transform .25s ease;
+    position:fixed; z-index:15; pointer-events:none;
+    max-width:min(320px, 70vw); transform:translate(-50%, calc(-100% + 8px));
+    background:#f4f0e6; color:#241f1a; font-family:'Courier New',monospace; font-size:.82rem;
+    padding:10px 14px; border-radius:3px; text-align:center; line-height:1.4;
+    border:3px solid #241f1a; box-shadow:4px 4px 0 rgba(0,0,0,.45);
+    opacity:0; transition: opacity .2s ease;
+  }
+  /* Pointe de la bulle façon pixel art : un triangle bordé, obtenu avec deux
+     triangles superposés (un plus grand en couleur de bordure, un plus petit
+     par-dessus en couleur de fond) plutôt qu'un simple triangle flou. */
+  #guardSpeechBubble::before {
+    content:''; position:absolute; bottom:-13px; left:50%; margin-left:-8px;
+    border-width:13px 8px 0; border-style:solid; border-color:#241f1a transparent transparent;
   }
   #guardSpeechBubble::after {
-    content:''; position:absolute; bottom:-10px; left:50%; margin-left:-10px;
-    border-width:10px 10px 0; border-style:solid; border-color:#f4f0e6 transparent transparent;
+    content:''; position:absolute; bottom:-8px; left:50%; margin-left:-5px;
+    border-width:9px 5px 0; border-style:solid; border-color:#f4f0e6 transparent transparent;
   }
-  #guardSpeechBubble.show { opacity:1; transform:translate(-50%, 0); }
+  #guardSpeechBubble.show { opacity:1; }
 
   #hint {
     position:fixed; bottom:22px; left:50%; transform:translateX(-50%);
@@ -622,7 +629,7 @@
   <div id="homeTextAdminControls">
     <span id="homeTextStyleBtn" title="Style du texte">🎨</span>
   </div>
-  <div id="versionTag">V2.1.0</div>
+  <div id="versionTag">V2.1.1</div>
 </div>
 
 <div id="homeTextEditor">
@@ -2297,13 +2304,31 @@ const MUSEUM_GUARD_LINES = [
   'Tu as vu le cadre là-bas ? Il est magnifique.',
 ];
 let guardSpeechHideTimeout = null;
+let guardBubbleVisible = false;
+const guardBubbleWorldPos = new THREE.Vector3();
 function sayRandomGuardLine() {
   const bubble = document.getElementById('guardSpeechBubble');
   const line = MUSEUM_GUARD_LINES[Math.floor(Math.random() * MUSEUM_GUARD_LINES.length)];
   bubble.textContent = line;
   bubble.classList.add('show');
+  guardBubbleVisible = true;
+  updateGuardBubblePosition(); // se place tout de suite, pas seulement à la prochaine image
   clearTimeout(guardSpeechHideTimeout);
-  guardSpeechHideTimeout = setTimeout(() => bubble.classList.remove('show'), 3200);
+  guardSpeechHideTimeout = setTimeout(() => { bubble.classList.remove('show'); guardBubbleVisible = false; }, 3200);
+}
+
+// Projette la position réelle de la tête du gardien (pas un point fixe à
+// l'écran) vers des coordonnées 2D, pour que la bulle reste bien au-dessus
+// de lui — y compris s'il n'est pas centré dans le champ de vision.
+function updateGuardBubblePosition() {
+  if (!guardBubbleVisible || !museumGuardRefs || !museumGuardRefs.headGroup) return;
+  museumGuardRefs.headGroup.getWorldPosition(guardBubbleWorldPos);
+  guardBubbleWorldPos.y += 0.28; // un peu au-dessus de la tête, pas pile dessus
+  const v = guardBubbleWorldPos.clone().project(camera);
+  const bubble = document.getElementById('guardSpeechBubble');
+  if (v.z > 1) { bubble.classList.remove('show'); return; } // derrière la caméra : on cache plutôt que de l'afficher n'importe où
+  bubble.style.left = ((v.x * 0.5 + 0.5) * window.innerWidth) + 'px';
+  bubble.style.top = ((-v.y * 0.5 + 0.5) * window.innerHeight) + 'px';
 }
 
 function updateMuseumGuardAnimation(t, delta) {
@@ -4010,6 +4035,7 @@ function animate() {
   Object.values(frames).forEach(f => { if (f.previewTexture && f.previewIsGif) f.previewTexture.needsUpdate = true; });
 
   updateMuseumGuardAnimation(clock.elapsedTime, delta);
+  updateGuardBubblePosition();
 
   if (isGameActive()) {
     const hovering = raycastInteractable() !== null;
