@@ -172,9 +172,9 @@
   }
 
   #guardSpeechBubble {
-    position:fixed; z-index:15; pointer-events:none;
+    position:fixed; z-index:7; pointer-events:none;
     max-width:min(320px, 70vw); transform:translate(-50%, calc(-100% + 8px));
-    background:#f4f0e6; color:#241f1a; font-family:'Courier New',monospace; font-size:.82rem;
+    background:#f4f0e6; color:#241f1a; font-family:'Courier New',monospace; font-size:1.05rem; font-weight:bold;
     padding:10px 14px; border-radius:3px; text-align:center; line-height:1.4;
     border:3px solid #241f1a; box-shadow:4px 4px 0 rgba(0,0,0,.45);
     opacity:0; transition: opacity .2s ease;
@@ -629,7 +629,7 @@
   <div id="homeTextAdminControls">
     <span id="homeTextStyleBtn" title="Style du texte">🎨</span>
   </div>
-  <div id="versionTag">V2.1.1</div>
+  <div id="versionTag">V2.1.2</div>
 </div>
 
 <div id="homeTextEditor">
@@ -2323,7 +2323,7 @@ function sayRandomGuardLine() {
 function updateGuardBubblePosition() {
   if (!guardBubbleVisible || !museumGuardRefs || !museumGuardRefs.headGroup) return;
   museumGuardRefs.headGroup.getWorldPosition(guardBubbleWorldPos);
-  guardBubbleWorldPos.y += 0.28; // un peu au-dessus de la tête, pas pile dessus
+  guardBubbleWorldPos.y += 0.45; // nettement au-dessus du chapeau, pas juste au ras
   const v = guardBubbleWorldPos.clone().project(camera);
   const bubble = document.getElementById('guardSpeechBubble');
   if (v.z > 1) { bubble.classList.remove('show'); return; } // derrière la caméra : on cache plutôt que de l'afficher n'importe où
