@@ -608,7 +608,7 @@
   <div id="homeTextAdminControls">
     <span id="homeTextStyleBtn" title="Style du texte">🎨</span>
   </div>
-  <div id="versionTag">V2.0.1</div>
+  <div id="versionTag">V2.0.2</div>
 </div>
 
 <div id="homeTextEditor">
@@ -2228,7 +2228,7 @@ function placeMuseumGuard(spot) {
   if (!spot) return;
 
   const dir = CARDINAL[spot.side];
-  const wallInset = CELL/2 - 0.85; // recul depuis le mur pour la chaise (marge augmentée : le gardien est 2x plus grand)
+  const wallInset = CELL/2 - 0.7; // recul depuis le mur pour la chaise (marge ajustée pour la taille 1,5x)
   const baseX = spot.cell.x + dir.x*wallInset;
   const baseZ = spot.cell.z + dir.z*wallInset;
   const rotY = wallRotationForInwardNormal(-dir.x, -dir.z); // dos au mur, face vers le couloir
@@ -2236,7 +2236,7 @@ function placeMuseumGuard(spot) {
   const group = new THREE.Group();
   group.position.set(baseX, 0, baseZ);
   group.rotation.y = rotY;
-  group.scale.set(2, 2, 2);
+  group.scale.set(1.5, 1.5, 1.5);
 
   const chair = buildGuardChairMesh();
   group.add(chair);
