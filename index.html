@@ -171,6 +171,20 @@
     box-shadow: 0 0 6px rgba(203,161,53,.8);
   }
 
+  #guardSpeechBubble {
+    position:fixed; top:38%; left:50%; transform:translate(-50%, 10px);
+    max-width:min(420px, 80vw); z-index:15; pointer-events:none;
+    background:#f4f0e6; color:#241f1a; font-family:Georgia,serif; font-size:.95rem;
+    padding:12px 18px; border-radius:10px; text-align:center; line-height:1.4;
+    box-shadow:0 8px 24px rgba(0,0,0,.5);
+    opacity:0; transition: opacity .25s ease, transform .25s ease;
+  }
+  #guardSpeechBubble::after {
+    content:''; position:absolute; bottom:-10px; left:50%; margin-left:-10px;
+    border-width:10px 10px 0; border-style:solid; border-color:#f4f0e6 transparent transparent;
+  }
+  #guardSpeechBubble.show { opacity:1; transform:translate(-50%, 0); }
+
   #hint {
     position:fixed; bottom:22px; left:50%; transform:translateX(-50%);
     color:#a89a82; font-size:.78rem; letter-spacing:.05em; z-index:10;
@@ -608,7 +622,7 @@
   <div id="homeTextAdminControls">
     <span id="homeTextStyleBtn" title="Style du texte">🎨</span>
   </div>
-  <div id="versionTag">V2.0.3</div>
+  <div id="versionTag">V2.1.0</div>
 </div>
 
 <div id="homeTextEditor">
@@ -644,6 +658,7 @@
 </div>
 
 <div id="crosshair"></div>
+<div id="guardSpeechBubble"></div>
 <div id="vhsOverlay"><div class="scanBar"></div></div>
 <div id="vhsGifLayer"></div>
 <div id="hint">Cliquez sur un cadre pour l'agrandir, ou sur une porte pour changer de pièce · Échap pour libérer le curseur · ⚙ pour l'admin</div>
@@ -2219,6 +2234,7 @@ function placeMuseumGuard(spot) {
   group.position.set(baseX, 0, baseZ);
   group.rotation.y = rotY;
   group.scale.set(1.5, 1.5, 1.5);
+  group.userData.isMuseumGuard = true;
 
   const chair = buildGuardChairMesh();
   group.add(chair);
@@ -2268,6 +2284,26 @@ function pickNextGuardPose(excluding) {
     if (roll <= 0) return p;
   }
   return choices[choices.length - 1];
+}
+
+// ---- Répliques aléatoires du gardien, au clic ----
+const MUSEUM_GUARD_LINES = [
+  'Attention de ne pas toucher aux plantes, s\'il te plaît !',
+  'Chut… on est dans un musée, ici.',
+  'Belle journée pour visiter la galerie, non ?',
+  'Je garde un œil sur tout, ne t\'inquiète pas.',
+  'Les œuvres ne se touchent pas, mais on peut les admirer autant qu\'on veut.',
+  'Ça fait des heures que je suis assis là…',
+  'Tu as vu le cadre là-bas ? Il est magnifique.',
+];
+let guardSpeechHideTimeout = null;
+function sayRandomGuardLine() {
+  const bubble = document.getElementById('guardSpeechBubble');
+  const line = MUSEUM_GUARD_LINES[Math.floor(Math.random() * MUSEUM_GUARD_LINES.length)];
+  bubble.textContent = line;
+  bubble.classList.add('show');
+  clearTimeout(guardSpeechHideTimeout);
+  guardSpeechHideTimeout = setTimeout(() => bubble.classList.remove('show'), 3200);
 }
 
 function updateMuseumGuardAnimation(t, delta) {
@@ -3339,6 +3375,7 @@ interactBtn.addEventListener('click', () => {
   else if (hit.type === 'door') goThroughDoor(hit.target);
   else if (hit.type === 'gallerymap') openGalleryMapZoom();
   else if (hit.type === 'plant') triggerRandomPlantEffect(hit.object);
+  else if (hit.type === 'museumguard') sayRandomGuardLine();
   else if (hit.type === 'wall') openWallTextEditor(hit.key);
 });
 
@@ -3501,6 +3538,15 @@ function findPlantAncestor(obj) {
   return null;
 }
 
+function findMuseumGuardAncestor(obj) {
+  let cur = obj;
+  while (cur) {
+    if (cur.userData.isMuseumGuard) return cur;
+    cur = cur.parent;
+  }
+  return null;
+}
+
 function raycastInteractable() {
   raycaster.setFromCamera({ x: 0, y: 0 }, camera);
   // Recalculé à chaque appel (et non figé une fois pour toutes) pour que les
@@ -3509,12 +3555,15 @@ function raycastInteractable() {
   // Filtré par ".parent" : ignore les plantes retirées de la scène depuis
   // (salle supprimée, couloir reconstruit) sans avoir à gérer une purge manuelle.
   const plantTargets = clickablePlants.filter(p => p.parent);
-  const targets = [...Object.values(frames).map(f => f.screen), ...doorMeshes, ...wallMeshesForClick, ...mapTargets, ...plantTargets];
-  const hits = raycaster.intersectObjects(targets, true); // récursif : les plantes sont des groupes, pas un seul maillage
+  const guardTargets = museumGuardGroup ? [museumGuardGroup] : [];
+  const targets = [...Object.values(frames).map(f => f.screen), ...doorMeshes, ...wallMeshesForClick, ...mapTargets, ...plantTargets, ...guardTargets];
+  const hits = raycaster.intersectObjects(targets, true); // récursif : les plantes/le gardien sont des groupes, pas un seul maillage
   if (hits.length && hits[0].distance < CLICK_RANGE) {
     const obj = hits[0].object;
     const plantAncestor = findPlantAncestor(obj);
     if (plantAncestor) return { type: 'plant', object: plantAncestor };
+    const guardAncestor = findMuseumGuardAncestor(obj);
+    if (guardAncestor) return { type: 'museumguard' };
     if (obj.userData.isDoor) return { type: 'door', target: obj.userData.doorTarget };
     if (obj.userData.frameId) return { type: 'frame', id: obj.userData.frameId };
     if (obj.userData.isGalleryMap) return { type: 'gallerymap' };
@@ -3645,6 +3694,7 @@ renderer.domElement.addEventListener('click', () => {
   else if (hit.type === 'door') goThroughDoor(hit.target);
   else if (hit.type === 'gallerymap') openGalleryMapZoom();
   else if (hit.type === 'plant') triggerRandomPlantEffect(hit.object);
+  else if (hit.type === 'museumguard') sayRandomGuardLine();
   else if (hit.type === 'wall') openWallTextEditor(hit.key);
 });
 
