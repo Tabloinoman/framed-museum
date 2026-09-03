@@ -618,7 +618,7 @@
   <div id="homeTextAdminControls">
     <span id="homeTextStyleBtn" title="Style du texte">🎨</span>
   </div>
-  <div id="versionTag">V2.3.2</div>
+  <div id="versionTag">V2.4.0</div>
 </div>
 
 <div id="homeTextEditor">
@@ -3483,11 +3483,13 @@ document.addEventListener('mousemove', (e) => {
 const lookZone = document.getElementById('lookZone');
 let lookTouchId = null;
 let lastLookPos = { x: 0, y: 0 };
+let lookTouchStart = { x: 0, y: 0, t: 0, moved: false };
 lookZone.addEventListener('touchstart', (e) => {
   if (lookTouchId !== null) return;
   const touch = e.changedTouches[0];
   lookTouchId = touch.identifier;
   lastLookPos = { x: touch.clientX, y: touch.clientY };
+  lookTouchStart = { x: touch.clientX, y: touch.clientY, t: performance.now(), moved: false };
 }, { passive: true });
 lookZone.addEventListener('touchmove', (e) => {
   const touch = Array.from(e.changedTouches).find(t => t.identifier === lookTouchId);
@@ -3500,10 +3502,22 @@ lookZone.addEventListener('touchmove', (e) => {
   pitch = Math.max(-PI_2 + 0.05, Math.min(PI_2 - 0.05, pitch));
   yawObject.rotation.y = yaw;
   pitchObject.rotation.x = pitch;
+  // Un vrai glissement pour regarder autour ne doit jamais se transformer en
+  // tapotement — dès qu'on s'éloigne un peu du point de départ, ce n'en est
+  // plus un, quelle que soit la durée du contact.
+  if (Math.hypot(touch.clientX - lookTouchStart.x, touch.clientY - lookTouchStart.y) > 12) {
+    lookTouchStart.moved = true;
+  }
 }, { passive: false });
 function endLookTouch(e) {
   const touch = Array.from(e.changedTouches).find(t => t.identifier === lookTouchId);
-  if (touch) lookTouchId = null;
+  if (!touch) return;
+  // Tapotement (pas de glissement notable, contact bref) : équivaut à un
+  // clic — mêmes cadres/portes/plantes/gardien/murs qu'avec le bouton "Ouvrir".
+  if (!lookTouchStart.moved && (performance.now() - lookTouchStart.t) < 350) {
+    performInteraction();
+  }
+  lookTouchId = null;
 }
 lookZone.addEventListener('touchend', endLookTouch);
 lookZone.addEventListener('touchcancel', endLookTouch);
@@ -3553,7 +3567,7 @@ joystickZone.addEventListener('touchcancel', endJoystickTouch);
 
 // Bouton "Ouvrir" (tactile) : équivalent du clic souris sur un cadre/une porte.
 const interactBtn = document.getElementById('interactBtn');
-interactBtn.addEventListener('click', () => {
+function performInteraction() {
   if (!isGameActive() || adminOpen || modalOpen || geoOpen) return;
   const hit = raycastInteractable();
   if (!hit) return;
@@ -3563,7 +3577,8 @@ interactBtn.addEventListener('click', () => {
   else if (hit.type === 'plant') triggerRandomPlantEffect(hit.object);
   else if (hit.type === 'museumguard') sayRandomGuardLine();
   else if (hit.type === 'wall') openWallTextEditor(hit.key);
-});
+}
+interactBtn.addEventListener('click', performInteraction);
 
 const jumpBtn = document.getElementById('jumpBtn');
 function triggerJump(e) {
