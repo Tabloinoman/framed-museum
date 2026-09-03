@@ -99,6 +99,20 @@
     transition: opacity .35s ease;
   }
   #blocker.hidden { opacity:0; pointer-events:none; }
+
+  #initialLoadingScreen {
+    position:fixed; inset:0; z-index:30; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:18px;
+    background:#050403; color:#a89a82; font-size:.9rem; letter-spacing:.04em;
+    transition: opacity .4s ease;
+  }
+  #initialLoadingScreen.hidden { opacity:0; pointer-events:none; }
+  #initialLoadingSpinner {
+    width:34px; height:34px; border-radius:50%;
+    border:3px solid rgba(203,161,53,.25); border-top-color:#cba135;
+    animation: initialLoadingSpin 0.9s linear infinite;
+  }
+  @keyframes initialLoadingSpin { to { transform: rotate(360deg); } }
   #blocker h1 { font-size:1.8rem; font-weight:400; letter-spacing:.08em; margin-bottom:14px; color:#cba135; }
   #blocker p { font-size:.95rem; color:#a89a82; line-height:1.7; max-width:420px; margin:0 auto; }
   #blocker .key { border:1px solid #a89a82; border-radius:3px; padding:1px 7px; font-family:monospace; color:#e8ddc8; }
@@ -615,6 +629,11 @@
   </defs>
 </svg>
 
+<div id="initialLoadingScreen">
+  <div id="initialLoadingSpinner"></div>
+  <p>Chargement de la galerie…</p>
+</div>
+
 <div id="blocker">
   <div>
     <h1>LA GALERIE</h1>
@@ -628,7 +647,7 @@
   <div id="homeTextAdminControls">
     <span id="homeTextStyleBtn" title="Style du texte">🎨</span>
   </div>
-  <div id="versionTag">V2.7.3</div>
+  <div id="versionTag">V2.8.0</div>
 </div>
 
 <div id="homeTextEditor">
@@ -1164,13 +1183,28 @@ let pixelScale = 4;
 // téléphone pour le même réglage (jusqu'à 6x plus de pixels sur un écran
 // 1920px de large vs un mobile) — d'où le ralentissement observé sur ordinateur.
 const MAX_RENDER_W = 320, MAX_RENDER_H = 220;
+// window.innerWidth/innerHeight peuvent être temporairement dans un état
+// incohérent sur iOS Safari (la barre d'adresse qui se réduit/étend change
+// la zone visible sans toujours déclencher un 'resize' fiable) — quand
+// l'API visualViewport existe, elle reflète plus fidèlement la zone
+// RÉELLEMENT visible à l'instant présent.
+function currentViewportSize() {
+  if (window.visualViewport) return { w: window.visualViewport.width, h: window.visualViewport.height };
+  return { w: window.innerWidth, h: window.innerHeight };
+}
 function applyPixelation() {
-  const lowW = Math.min(MAX_RENDER_W, Math.max(64, Math.floor(window.innerWidth / pixelScale)));
-  const lowH = Math.min(MAX_RENDER_H, Math.max(48, Math.floor(window.innerHeight / pixelScale)));
+  const { w: vw, h: vh } = currentViewportSize();
+  const lowW = Math.min(MAX_RENDER_W, Math.max(64, Math.floor(vw / pixelScale)));
+  const lowH = Math.min(MAX_RENDER_H, Math.max(48, Math.floor(vh / pixelScale)));
   renderer.setSize(lowW, lowH, false);
   renderer.domElement.style.width = '100%';
   renderer.domElement.style.height = '100%';
-  camera.aspect = lowW / lowH;
+  // Le ratio d'aspect de la caméra doit correspondre au ratio RÉEL de la
+  // fenêtre (utilisé pour l'étirement final du canevas à l'écran) — pas au
+  // ratio arrondi de la petite résolution interne (lowW/lowH, tronqué par
+  // Math.floor). Ce tout petit écart entre les deux peut suffire à
+  // légèrement déformer l'image affichée.
+  camera.aspect = vw / vh;
   camera.updateProjectionMatrix();
 }
 applyPixelation();
@@ -1179,6 +1213,9 @@ window.addEventListener('resize', applyPixelation);
 // fiable immédiatement — un petit délai laisse le navigateur mettre à jour
 // window.innerWidth/innerHeight avant de recalculer le rendu.
 window.addEventListener('orientationchange', () => { setTimeout(applyPixelation, 300); });
+// iOS Safari en particulier : l'apparition/disparition de la barre d'adresse
+// déclenche cet événement de façon bien plus fiable que le 'resize' classique.
+if (window.visualViewport) window.visualViewport.addEventListener('resize', applyPixelation);
 
 // ---------- Rig FPS (yaw + pitch) ----------
 const pitchObject = new THREE.Object3D();
@@ -4160,8 +4197,13 @@ function openVideoModal(frameId) {
     modalIframe.style.display = 'block';
     modalIframe.src = frame.embedUrl;
     videoModal.classList.add('open');
-  } else if (usingPreviewFallback && !isLikelyVideoUrl(contentUrl)) {
-    // Aperçu de secours qui n'est pas une vidéo (une image) : affiché tel quel.
+  } else if (!isLikelyVideoUrl(contentUrl)) {
+    // Le contenu n'est pas un fichier vidéo (une image ou un GIF) — affiché
+    // tel quel dans <img>, qui seul sait animer un GIF correctement. Décidé
+    // uniquement sur la vraie nature du lien, plus sur "est-ce un aperçu de
+    // secours ou un vrai lien au clic" : un GIF donné comme lien au clic
+    // lui-même (pas seulement en secours) se retrouvait sinon envoyé vers
+    // <video>, qui ne sait pas lire un GIF — d'où l'échec de chargement.
     modalVideo.pause();
     modalVideo.style.display = 'none';
     modalIframe.style.display = 'none';
@@ -6705,8 +6747,19 @@ function parseCsvLine(line) {
 
 let sheetConfigLoaded = false; // vrai une fois que le Sheet a eu sa chance de s'appliquer (succès ou échec)
 
+// Écran de chargement initial : masqué dès que le Sheet a eu sa chance de
+// répondre (utile surtout sur mobile, où le tout premier chargement peut
+// prendre nettement plus de temps que sur ordinateur) — avec un filet de
+// sécurité qui le masque de toute façon au bout de 8s, pour ne jamais
+// laisser quelqu'un bloqué dessus indéfiniment en cas de souci réseau.
+const initialLoadingScreen = document.getElementById('initialLoadingScreen');
+function hideInitialLoadingScreen() {
+  initialLoadingScreen.classList.add('hidden');
+}
+setTimeout(hideInitialLoadingScreen, 8000);
+
 async function loadGoogleSheetConfig() {
-  if (!SHEET_READ_CSV_URL) { sheetConfigLoaded = true; refreshOpenModalIfWaiting(); return; }
+  if (!SHEET_READ_CSV_URL) { sheetConfigLoaded = true; refreshOpenModalIfWaiting(); hideInitialLoadingScreen(); return; }
   try {
     const res = await fetch(SHEET_READ_CSV_URL);
     if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -6774,6 +6827,7 @@ async function loadGoogleSheetConfig() {
   } finally {
     sheetConfigLoaded = true;
     refreshOpenModalIfWaiting();
+    hideInitialLoadingScreen();
   }
 }
 
