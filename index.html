@@ -181,6 +181,16 @@
   }
   #guardSpeechBubble.show { opacity:1; }
 
+  #photoLightbox {
+    position:fixed; inset:0; z-index:60; display:flex; align-items:center; justify-content:center;
+    background:rgba(5,4,3,.9); opacity:0; pointer-events:none; transition:opacity .2s ease; cursor:zoom-out;
+  }
+  #photoLightbox.open { opacity:1; pointer-events:auto; }
+  #photoLightboxImg {
+    max-width:88vw; max-height:88vh; object-fit:contain;
+    box-shadow:0 20px 60px rgba(0,0,0,.7); border:6px solid #f4f0e6;
+  }
+
   #hint {
     position:fixed; bottom:22px; left:50%; transform:translateX(-50%);
     color:#a89a82; font-size:.78rem; letter-spacing:.05em; z-index:10;
@@ -618,7 +628,7 @@
   <div id="homeTextAdminControls">
     <span id="homeTextStyleBtn" title="Style du texte">🎨</span>
   </div>
-  <div id="versionTag">V2.6.1</div>
+  <div id="versionTag">V2.7.0</div>
 </div>
 
 <div id="homeTextEditor">
@@ -655,6 +665,10 @@
 
 <div id="crosshair"></div>
 <canvas id="guardSpeechBubble" width="190" height="80"></canvas>
+
+<div id="photoLightbox">
+  <img id="photoLightboxImg" src="" alt="Photo agrandie">
+</div>
 <div id="vhsOverlay"><div class="scanBar"></div></div>
 <div id="vhsGifLayer"></div>
 <div id="hint">Cliquez sur un cadre pour l'agrandir, ou sur une porte pour changer de pièce · Échap pour libérer le curseur · ⚙ pour l'admin</div>
@@ -1445,6 +1459,7 @@ function buildPhotoObjectsForWall(wallKey) {
       new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7, side: THREE.DoubleSide })
     );
     photo.position.set(0, -pinOffsetY + 0.03, 0);
+    photo.userData.wallPhotoUrl = b.url; // pour que le clic ouvre la photo en grand, pas l'éditeur du mur derrière
     sub.add(photo);
 
     // La punaise reste à l'origine du groupe : c'est donc elle qui sert de
@@ -3637,6 +3652,7 @@ function performInteraction() {
   else if (hit.type === 'gallerymap') openGalleryMapZoom();
   else if (hit.type === 'plant') triggerRandomPlantEffect(hit.object);
   else if (hit.type === 'museumguard') sayRandomGuardLine();
+  else if (hit.type === 'wallphoto') openPhotoLightbox(hit.url);
   else if (hit.type === 'wall') openWallTextEditor(hit.key);
 }
 interactBtn.addEventListener('click', performInteraction);
@@ -3818,10 +3834,16 @@ function raycastInteractable() {
   // (salle supprimée, couloir reconstruit) sans avoir à gérer une purge manuelle.
   const plantTargets = clickablePlants.filter(p => p.parent);
   const guardTargets = museumGuardGroup ? [museumGuardGroup] : [];
-  const targets = [...Object.values(frames).map(f => f.screen), ...doorMeshes, ...wallMeshesForClick, ...mapTargets, ...plantTargets, ...guardTargets];
-  const hits = raycaster.intersectObjects(targets, true); // récursif : les plantes/le gardien sont des groupes, pas un seul maillage
+  const photoTargets = Object.values(photoObjectGroups);
+  const targets = [...Object.values(frames).map(f => f.screen), ...doorMeshes, ...wallMeshesForClick, ...mapTargets, ...plantTargets, ...guardTargets, ...photoTargets];
+  const hits = raycaster.intersectObjects(targets, true); // récursif : les plantes/le gardien/les photos sont des groupes, pas un seul maillage
   if (hits.length && hits[0].distance < CLICK_RANGE) {
     const obj = hits[0].object;
+    // Vérifié avant le mur : une photo punaisée est légèrement décalée devant
+    // son mur, donc naturellement touchée en premier par le rayon — mais
+    // autant le confirmer explicitement plutôt que de compter uniquement sur
+    // l'ordre des distances.
+    if (obj.userData.wallPhotoUrl) return { type: 'wallphoto', url: obj.userData.wallPhotoUrl };
     const plantAncestor = findPlantAncestor(obj);
     if (plantAncestor) return { type: 'plant', object: plantAncestor };
     const guardAncestor = findMuseumGuardAncestor(obj);
@@ -3969,6 +3991,7 @@ renderer.domElement.addEventListener('click', () => {
   else if (hit.type === 'gallerymap') openGalleryMapZoom();
   else if (hit.type === 'plant') triggerRandomPlantEffect(hit.object);
   else if (hit.type === 'museumguard') sayRandomGuardLine();
+  else if (hit.type === 'wallphoto') openPhotoLightbox(hit.url);
   else if (hit.type === 'wall') openWallTextEditor(hit.key);
 });
 
@@ -4189,6 +4212,34 @@ function closeVideoModal() {
   if (isTouchDevice) { mobileActive = true; onGameActivated(); }
   else renderer.domElement.requestPointerLock();
 }
+
+// ---------- Photo punaisée sur un mur : l'agrandir au clic, plutôt que
+// d'ouvrir l'éditeur du mur derrière elle (voir raycastInteractable, qui
+// détecte maintenant la photo AVANT le mur). Même principe que la fenêtre
+// vidéo (met le jeu en pause, libère le curseur), en plus simple : juste
+// une image, pas de lecteur.
+const photoLightbox = document.getElementById('photoLightbox');
+const photoLightboxImg = document.getElementById('photoLightboxImg');
+function openPhotoLightbox(url) {
+  photoLightboxImg.src = url;
+  photoLightbox.classList.add('open');
+  modalOpen = true;
+  mobileActive = false;
+  if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
+  onGameDeactivated();
+}
+function closePhotoLightbox() {
+  photoLightbox.classList.remove('open');
+  photoLightboxImg.src = '';
+  modalOpen = false;
+  blocker.classList.add('hidden');
+  unlockAudio();
+  requestGalleryFullscreen();
+  if (isTouchDevice) { mobileActive = true; onGameActivated(); }
+  else renderer.domElement.requestPointerLock();
+}
+photoLightbox.addEventListener('click', closePhotoLightbox);
+
 
 closeModalBtn.addEventListener('click', closeVideoModal);
 // Cliquer sur le fond assombri (en dehors du cadre) ferme aussi le lecteur.
