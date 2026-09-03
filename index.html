@@ -618,7 +618,7 @@
   <div id="homeTextAdminControls">
     <span id="homeTextStyleBtn" title="Style du texte">🎨</span>
   </div>
-  <div id="versionTag">V2.5.0</div>
+  <div id="versionTag">V2.6.0</div>
 </div>
 
 <div id="homeTextEditor">
@@ -1137,8 +1137,10 @@ const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHei
 const renderer = new THREE.WebGLRenderer({ antialias:false });
 renderer.setPixelRatio(1);
 renderer.outputEncoding = THREE.sRGBEncoding;
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+// Ombres désactivées : aucune lumière de la scène n'a castShadow=true (vérifié
+// dans tout le fichier), donc ça ne produisait jamais la moindre ombre à
+// l'écran — juste du coût de calcul pur, pour rien.
+renderer.shadowMap.enabled = false;
 document.body.appendChild(renderer.domElement);
 
 // ---------- Rendu pixel art : résolution interne réduite ----------
@@ -3881,7 +3883,11 @@ function unlockAudio() {
 function onGameActivated() {
   hint.classList.toggle('show', !isTouchDevice); // le rappel clavier/souris n'a pas de sens au doigt
   blocker.classList.add('hidden');
-  Object.values(frames).forEach(f => f.video.play().catch(() => {}));
+  // Ne force plus la lecture de TOUTES les vidéos de la galerie ici — c'était
+  // la vraie cause du ralentissement au démarrage (des dizaines de vidéos
+  // décodées en même temps, même très loin du joueur). Le système de
+  // proximité (updateAmbientAudio, appelé à chaque image) s'en charge déjà
+  // très bien tout seul, en ne lançant que celles qui sont réellement proches.
   if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume(); // filet de sécurité
 }
 function onGameDeactivated() {
