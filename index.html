@@ -618,7 +618,7 @@
   <div id="homeTextAdminControls">
     <span id="homeTextStyleBtn" title="Style du texte">🎨</span>
   </div>
-  <div id="versionTag">V2.4.0</div>
+  <div id="versionTag">V2.4.1</div>
 </div>
 
 <div id="homeTextEditor">
@@ -5084,6 +5084,7 @@ function updateWallSelectionUI() {
     if (selectedWall.internal) {
       wallSelectionStatusEl.textContent = `Mur interne sélectionné (côté ${selectedWall.dirK}, entre deux cases du tracé) — vous pouvez y gérer un cadre, même sans mur plein.`;
       addDoorAtWallBtn.disabled = true; // pas de porte/branche sur un mur interne, seulement un cadre
+      addDoorAtWallBtn.textContent = '+ Porte ici';
       // Bouton fiable pour poser/retirer ce mur forcé (rouge sur la carte),
       // sans avoir à recliquer précisément sur le même pixel de la carte.
       const key = edgeKey(selectedWall.gx, selectedWall.gz, selectedWall.dirK);
@@ -5091,14 +5092,20 @@ function updateWallSelectionUI() {
       toggleBtn.style.display = 'block';
       toggleBtn.textContent = hasWall ? 'Retirer ce mur' : 'Poser un mur ici';
     } else {
-      wallSelectionStatusEl.textContent = `Mur sélectionné (côté ${selectedWall.dirK}) — ajoutez un couloir/virage à partir d'ici, une porte, ou un cadre.`;
+      const key = edgeKey(selectedWall.gx, selectedWall.gz, selectedWall.dirK);
+      const hasDoor = manualEdges[key] === 'door';
+      wallSelectionStatusEl.textContent = hasDoor
+        ? `Mur sélectionné (côté ${selectedWall.dirK}) — une porte y est déjà posée.`
+        : `Mur sélectionné (côté ${selectedWall.dirK}) — ajoutez un couloir/virage à partir d'ici, une porte, ou un cadre.`;
       addDoorAtWallBtn.disabled = false;
+      addDoorAtWallBtn.textContent = hasDoor ? '✕ Retirer la porte' : '+ Porte ici';
       toggleBtn.style.display = 'none';
     }
     setFrameEditContext(frameId, wallX, wallZ, inwardDir, `Cadre — mur ${selectedWall.dirK}`);
   } else {
     wallSelectionStatusEl.textContent = 'Aucun mur sélectionné.';
     addDoorAtWallBtn.disabled = true;
+    addDoorAtWallBtn.textContent = '+ Porte ici';
     toggleBtn.style.display = 'none';
     clearFrameEditContext();
   }
@@ -5809,11 +5816,18 @@ minimapZoomCanvas.addEventListener('click', (e) => {
 addDoorAtWallBtn.addEventListener('click', () => {
   if (!selectedWall) return;
   const key = edgeKey(selectedWall.gx, selectedWall.gz, selectedWall.dirK);
-  manualEdges[key] = 'door';
+  const hasDoor = manualEdges[key] === 'door';
+  if (hasDoor) {
+    delete manualEdges[key];
+  } else {
+    manualEdges[key] = 'door';
+  }
   selectedWall = null;
   updateWallSelectionUI();
   drawMinimap();
-  geoStatusEl.textContent = 'Porte ajoutée — cliquez sur "Appliquer" pour la construire.';
+  geoStatusEl.textContent = hasDoor
+    ? 'Porte retirée — cliquez sur "Appliquer" pour valider (la salle derrière, si elle existait, sera aussi retirée).'
+    : 'Porte ajoutée — cliquez sur "Appliquer" pour la construire.';
 });
 
 function renderGeoList() {
