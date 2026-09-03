@@ -628,7 +628,7 @@
   <div id="homeTextAdminControls">
     <span id="homeTextStyleBtn" title="Style du texte">🎨</span>
   </div>
-  <div id="versionTag">V2.7.0</div>
+  <div id="versionTag">V2.7.1</div>
 </div>
 
 <div id="homeTextEditor">
@@ -3589,9 +3589,16 @@ function endLookTouch(e) {
   const touch = Array.from(e.changedTouches).find(t => t.identifier === lookTouchId);
   if (!touch) return;
   // Tapotement (pas de glissement notable, contact bref) : équivaut à un
-  // clic — mêmes cadres/portes/plantes/gardien/murs qu'avec le bouton "Ouvrir".
+  // clic — mêmes cadres/portes/plantes/gardien/murs/photos qu'avec le bouton
+  // "Ouvrir". Visé depuis la position RÉELLE du doigt sur l'écran, pas
+  // depuis le viseur central — sur tactile, on tape directement sur ce
+  // qu'on voit, pas besoin de d'abord recentrer la caméra dessus.
   if (!lookTouchStart.moved && (performance.now() - lookTouchStart.t) < 350) {
-    performInteraction();
+    const ndc = {
+      x: (touch.clientX / window.innerWidth) * 2 - 1,
+      y: -(touch.clientY / window.innerHeight) * 2 + 1,
+    };
+    performInteraction(ndc);
   }
   lookTouchId = null;
 }
@@ -3643,9 +3650,9 @@ joystickZone.addEventListener('touchcancel', endJoystickTouch);
 
 // Bouton "Ouvrir" (tactile) : équivalent du clic souris sur un cadre/une porte.
 const interactBtn = document.getElementById('interactBtn');
-function performInteraction() {
+function performInteraction(ndc) {
   if (!isGameActive() || adminOpen || modalOpen || geoOpen) return;
-  const hit = raycastInteractable();
+  const hit = raycastInteractable(ndc);
   if (!hit) return;
   if (hit.type === 'frame') openVideoModal(hit.id);
   else if (hit.type === 'door') goThroughDoor(hit.target);
@@ -3655,7 +3662,7 @@ function performInteraction() {
   else if (hit.type === 'wallphoto') openPhotoLightbox(hit.url);
   else if (hit.type === 'wall') openWallTextEditor(hit.key);
 }
-interactBtn.addEventListener('click', performInteraction);
+interactBtn.addEventListener('click', () => performInteraction());
 
 const jumpBtn = document.getElementById('jumpBtn');
 function triggerJump(e) {
@@ -3825,8 +3832,8 @@ function findMuseumGuardAncestor(obj) {
   return null;
 }
 
-function raycastInteractable() {
-  raycaster.setFromCamera({ x: 0, y: 0 }, camera);
+function raycastInteractable(ndc) {
+  raycaster.setFromCamera(ndc || { x: 0, y: 0 }, camera);
   // Recalculé à chaque appel (et non figé une fois pour toutes) pour que les
   // cadres créés dynamiquement sur les tronçons ajoutés restent cliquables.
   const mapTargets = galleryMapGroup ? galleryMapGroup.children.filter(o => o.userData.isGalleryMap) : [];
