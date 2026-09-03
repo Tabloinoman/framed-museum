@@ -618,7 +618,7 @@
   <div id="homeTextAdminControls">
     <span id="homeTextStyleBtn" title="Style du texte">🎨</span>
   </div>
-  <div id="versionTag">V2.6.0</div>
+  <div id="versionTag">V2.6.1</div>
 </div>
 
 <div id="homeTextEditor">
@@ -1717,6 +1717,13 @@ function buildRoomGeometry(id) {
 
   const floorTex = makeRoomFloorTexture(palette);
   const wallTex = makeRoomWallTexture(palette);
+  // Assigné tout de suite (pas seulement à la toute fin de cette fonction) :
+  // un mur avec du texte va chercher EXTRA_ROOMS[id].wallTex pour dessiner le
+  // motif de fond sous le texte (voir drawWallBackgroundPattern) — construit
+  // AVANT que ça n'existe, ce mur se retrouvait avec un fond vide/uni, pas la
+  // texture de la palette. C'est ce qui se "réparait" en rouvrant l'éditeur
+  // de texte : à ce moment-là, la salle était déjà entièrement construite.
+  meta.wallTex = wallTex;
 
   const floorMat = new THREE.MeshStandardMaterial({ map: floorTex.clone(), color: meta.floorTint, roughness:0.5, metalness:0.08, side: THREE.DoubleSide });
   floorMat.map.repeat.set(2.5, 2.5); floorMat.map.needsUpdate = true;
