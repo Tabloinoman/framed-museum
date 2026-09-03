@@ -628,7 +628,7 @@
   <div id="homeTextAdminControls">
     <span id="homeTextStyleBtn" title="Style du texte">🎨</span>
   </div>
-  <div id="versionTag">V2.7.1</div>
+  <div id="versionTag">V2.7.2</div>
 </div>
 
 <div id="homeTextEditor">
@@ -1461,6 +1461,21 @@ function buildPhotoObjectsForWall(wallKey) {
     photo.position.set(0, -pinOffsetY + 0.03, 0);
     photo.userData.wallPhotoUrl = b.url; // pour que le clic ouvre la photo en grand, pas l'éditeur du mur derrière
     sub.add(photo);
+
+    // Zone de clic invisible, plus généreuse que la photo elle-même (celle-ci
+    // ne fait que 22% de la largeur du mur — bien plus petite qu'un cadre ou
+    // une porte). Au doigt, viser un objet aussi petit avec précision est
+    // difficile ; cette zone élargie (invisible, juste pour le rayon de
+    // détection) rend la photo bien plus facile à toucher sans devenir plus
+    // grande visuellement.
+    const hitPad = 1.7;
+    const photoHitArea = new THREE.Mesh(
+      new THREE.PlaneGeometry(photoW * hitPad, photoH * hitPad),
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+    );
+    photoHitArea.position.set(0, -pinOffsetY + 0.03, 0.001); // un chouïa devant, pour passer avant la photo au rayon
+    photoHitArea.userData.wallPhotoUrl = b.url;
+    sub.add(photoHitArea);
 
     // La punaise reste à l'origine du groupe : c'est donc elle qui sert de
     // pivot pour la rotation (et, la photo étant dimensionnée directement
