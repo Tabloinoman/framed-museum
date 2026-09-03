@@ -618,7 +618,7 @@
   <div id="homeTextAdminControls">
     <span id="homeTextStyleBtn" title="Style du texte">🎨</span>
   </div>
-  <div id="versionTag">V2.4.1</div>
+  <div id="versionTag">V2.5.0</div>
 </div>
 
 <div id="homeTextEditor">
@@ -988,6 +988,12 @@
       <input type="text" id="thisRoomWallImgUrl" placeholder="URL image de mur" style="margin-top:8px;">
       <div class="row" style="margin-top:4px;">
         <button class="secondary" id="thisRoomWallImgUrlApply">Appliquer (mur)</button>
+      </div>
+      <label style="margin-top:10px;">Couleurs (par-dessus le style choisi ci-dessus)</label>
+      <div class="row">
+        <label style="flex:1; display:flex; align-items:center; gap:6px;">Plafond <input type="color" id="roomCeilingTintInput"></label>
+        <label style="flex:1; display:flex; align-items:center; gap:6px;">Sol <input type="color" id="roomFloorTintInput"></label>
+        <label style="flex:1; display:flex; align-items:center; gap:6px;">Murs <input type="color" id="roomWallTintInput"></label>
       </div>
     </div>
   </div>
@@ -1523,6 +1529,37 @@ function applyCorridorWallTint(color) {
   saveGeometryToSheet();
 }
 
+// Mêmes principes que les 3 fonctions ci-dessus, mais pour UNE salle en
+// particulier (chaque salle a sa propre teinte, indépendante du couloir et
+// des autres salles) — repère les meshes via userData.isRoomXxx === id.
+function applyRoomCeilingTint(id, color) {
+  const room = EXTRA_ROOMS[id];
+  if (!room) return;
+  room.ceilingTint = color;
+  scene.traverse(obj => {
+    if (obj.userData && obj.userData.isRoomCeiling === id && obj.material) obj.material.color.set(color);
+  });
+  saveGeometryToSheet();
+}
+function applyRoomFloorTint(id, color) {
+  const room = EXTRA_ROOMS[id];
+  if (!room) return;
+  room.floorTint = color;
+  scene.traverse(obj => {
+    if (obj.userData && obj.userData.isRoomFloor === id && obj.material) obj.material.color.set(color);
+  });
+  saveGeometryToSheet();
+}
+function applyRoomWallTint(id, color) {
+  const room = EXTRA_ROOMS[id];
+  if (!room) return;
+  room.wallTint = color;
+  scene.traverse(obj => {
+    if (obj.userData && obj.userData.isRoomWall === id && obj.material) obj.material.color.set(color);
+  });
+  saveGeometryToSheet();
+}
+
 // ============================================================
 // Géométrie du couloir — modèle en grille de cellules
 // ============================================================
@@ -1664,6 +1701,14 @@ function buildRoomGeometry(id) {
   const meta = EXTRA_ROOMS[id];
   if (!meta || meta.built) return;
   const { center, size, palette } = meta;
+  // Couleurs propres à CETTE salle (pas la teinte globale du couloir) — un
+  // blanc neutre par défaut pour le sol/les murs (laisse la texture de la
+  // palette parler), et la couleur de plafond actuelle du couloir comme
+  // point de départ raisonnable pour celui de la salle, modifiable ensuite
+  // indépendamment.
+  if (meta.ceilingTint === undefined) meta.ceilingTint = ceilingColor;
+  if (meta.floorTint === undefined) meta.floorTint = '#ffffff';
+  if (meta.wallTint === undefined) meta.wallTint = '#ffffff';
   const group = new THREE.Group();
   scene.add(group);
   const cx = center.x, cz = center.z;
@@ -1671,15 +1716,16 @@ function buildRoomGeometry(id) {
   const floorTex = makeRoomFloorTexture(palette);
   const wallTex = makeRoomWallTexture(palette);
 
-  const floorMat = new THREE.MeshStandardMaterial({ map: floorTex.clone(), roughness:0.5, metalness:0.08, side: THREE.DoubleSide });
+  const floorMat = new THREE.MeshStandardMaterial({ map: floorTex.clone(), color: meta.floorTint, roughness:0.5, metalness:0.08, side: THREE.DoubleSide });
   floorMat.map.repeat.set(2.5, 2.5); floorMat.map.needsUpdate = true;
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(size, size), floorMat);
   floor.rotation.x = -Math.PI/2; floor.position.set(cx, 0, cz); floor.receiveShadow = true;
+  floor.userData.isRoomFloor = id;
   group.add(floor);
 
-  const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(size, size), new THREE.MeshStandardMaterial({ color:ceilingColor, roughness:1, side: THREE.DoubleSide }));
+  const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(size, size), new THREE.MeshStandardMaterial({ color:meta.ceilingTint, roughness:1, side: THREE.DoubleSide }));
   ceiling.rotation.x = Math.PI/2; ceiling.position.set(cx, h, cz); ceiling.receiveShadow = true;
-  ceiling.userData.isCeiling = true;
+  ceiling.userData.isRoomCeiling = id;
   group.add(ceiling);
 
   // Murs Nord, Est, Ouest pleins (cliquables pour y ajouter du texte) ; le
@@ -1690,7 +1736,7 @@ function buildRoomGeometry(id) {
     const hasText = wallTexts[wallKey] && wallTexts[wallKey].length > 0;
     const wallMat = new THREE.MeshStandardMaterial({
       map: hasText ? makeWallTextureWithText(wallKey) : wallTex.clone(),
-      roughness:0.85, side: THREE.DoubleSide
+      color: meta.wallTint, roughness:0.85, side: THREE.DoubleSide
     });
     if (!hasText) { wallMat.map.repeat.set(2, 1); wallMat.map.needsUpdate = true; }
     const wall = new THREE.Mesh(new THREE.PlaneGeometry(size, h), wallMat);
@@ -1698,18 +1744,20 @@ function buildRoomGeometry(id) {
     wall.rotation.y = wallRotationForInwardNormal(-n.x, -n.z);
     wall.receiveShadow = true;
     wall.userData.wallKey = wallKey;
+    wall.userData.isRoomWall = id;
     wallMeshesBySide[n.k] = wall;
     // Pas de push ici : rebuildCorridor() (toujours appelée juste après la
     // toute première construction d'une salle, voir goThroughDoor) réenregistre
     // les murs des salles de façon centralisée — l'ajouter aussi ici créerait des doublons.
     group.add(wall);
   });
-  const southWallMat = new THREE.MeshStandardMaterial({ map: wallTex.clone(), roughness:0.85, side: THREE.DoubleSide });
+  const southWallMat = new THREE.MeshStandardMaterial({ map: wallTex.clone(), color: meta.wallTint, roughness:0.85, side: THREE.DoubleSide });
   southWallMat.map.repeat.set(2, 1); southWallMat.map.needsUpdate = true;
   const southWall = new THREE.Mesh(new THREE.PlaneGeometry(size, h), southWallMat);
   southWall.position.set(cx, h/2, cz + size/2);
   southWall.rotation.y = wallRotationForInwardNormal(0, -1);
   southWall.receiveShadow = true;
+  southWall.userData.isRoomWall = id;
   group.add(southWall);
 
   // Ambiance colorée selon la palette de CETTE salle, bien différente du couloir.
@@ -3182,7 +3230,6 @@ function tryDriveDirectVideo(frameObj, driveId, originalUrl) {
 }
 
 const frames = {}; // id -> { video, texture, screen, border, config, kind, ... }
-const stored = loadStoredUrls();
 
 // Version allégée de loadVideoInto, sans rafraîchir le panneau administrateur :
 // utilisée uniquement à l'initialisation d'un cadre (createFrame), un moment
@@ -3229,7 +3276,12 @@ function createFrame(id, label, wallX, wallZ, inwardDir, maxW, maxH) {
   video.volume = 0;
   video.playsInline = true;
 
-  const initialRaw = stored[id] || BAKED_IN_CLICK_LINKS[id] || null;
+  // Relu à chaque appel (pas un instantané figé au chargement de la page) :
+  // un cadre peut être recréé bien plus tard (changement de palette d'une
+  // salle, chargement différé d'une salle, etc), longtemps après que le
+  // Google Sheet a mis à jour ce stockage local — un instantané périmé lui
+  // ferait perdre son lien au clic à ce moment-là.
+  const initialRaw = loadStoredUrls()[id] || BAKED_IN_CLICK_LINKS[id] || null;
   let initialResult = { kind: 'video', url: null };
   if (initialRaw) {
     initialResult = normalizeVideoUrl(initialRaw) || { kind: 'video', url: DEFAULT_VIDEO };
@@ -6078,6 +6130,9 @@ function enterRoomContext(roomId) {
     setRoomPaletteFor(roomId, paletteId);
     enterRoomContext(roomId); // rafraîchit l'affichage avec la nouvelle palette stockée
   });
+  roomCeilingTintInput.value = room.ceilingTint || ceilingColor;
+  roomFloorTintInput.value = room.floorTint || '#ffffff';
+  roomWallTintInput.value = room.wallTint || '#ffffff';
   clearFrameEditContext();
   drawRoomMinimap(roomId);
 }
@@ -6435,6 +6490,13 @@ ceilingColorInput.addEventListener('input', e => applyCeilingColor(e.target.valu
 corridorFloorTintInput.addEventListener('input', e => applyCorridorFloorTint(e.target.value));
 corridorWallTintInput.addEventListener('input', e => applyCorridorWallTint(e.target.value));
 
+const roomCeilingTintInput = document.getElementById('roomCeilingTintInput');
+const roomFloorTintInput = document.getElementById('roomFloorTintInput');
+const roomWallTintInput = document.getElementById('roomWallTintInput');
+roomCeilingTintInput.addEventListener('input', e => { if (geoContext.type === 'room') applyRoomCeilingTint(geoContext.roomId, e.target.value); });
+roomFloorTintInput.addEventListener('input', e => { if (geoContext.type === 'room') applyRoomFloorTint(geoContext.roomId, e.target.value); });
+roomWallTintInput.addEventListener('input', e => { if (geoContext.type === 'room') applyRoomWallTint(geoContext.roomId, e.target.value); });
+
 document.getElementById('thisRoomFloorImg').addEventListener('change', e => {
   const file = e.target.files[0];
   if (!file || geoContext.type !== 'room') return;
@@ -6671,6 +6733,9 @@ function serializeGeometryState() {
       // une sauvegarde déclenchée avant la première visite perdrait cette URL.
       floorTexUrl: r.floorTexUrl || r.pendingFloorTexUrl || null,
       wallTexUrl: r.wallTexUrl || r.pendingWallTexUrl || null,
+      ceilingTint: r.ceilingTint || null,
+      floorTint: r.floorTint || null,
+      wallTint: r.wallTint || null,
     };
   });
   return {
@@ -6856,6 +6921,12 @@ function applyGeometryState(state) {
             room.pendingWallTexUrl = info.wallTexUrl;
           }
         }
+        // Teintes personnalisées : appliquées tout de suite si la salle est
+        // déjà construite, sinon juste mémorisées — buildRoomGeometry() les
+        // lira au moment de la construction (voir meta.ceilingTint plus haut).
+        if (info.ceilingTint) { if (room.built) applyRoomCeilingTint(id, info.ceilingTint); else room.ceilingTint = info.ceilingTint; }
+        if (info.floorTint) { if (room.built) applyRoomFloorTint(id, info.floorTint); else room.floorTint = info.floorTint; }
+        if (info.wallTint) { if (room.built) applyRoomWallTint(id, info.wallTint); else room.wallTint = info.wallTint; }
       });
     }
 
